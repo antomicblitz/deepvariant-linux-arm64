@@ -2,9 +2,8 @@
 
 [![release](https://img.shields.io/badge/base-v1.9.0-green?logo=github)](https://github.com/google/deepvariant/releases)
 [![platform](https://img.shields.io/badge/platform-macOS%20ARM64-blue?logo=apple)](https://support.apple.com/en-us/116943)
-[![gpu](https://img.shields.io/badge/GPU-Metal%20via%20tensorflow--metal-orange)](https://developer.apple.com/metal/)
 
-This is a fork of [Google DeepVariant](https://github.com/google/deepvariant) v1.9.0 that builds and runs **natively on macOS with Apple Silicon** (M1, M2, M3, M4). It includes Metal GPU acceleration for the `call_variants` inference step via `tensorflow-metal`.
+This is a fork of [Google DeepVariant](https://github.com/google/deepvariant) v1.9.0 that builds and runs **natively on macOS with Apple Silicon** (M1, M2, M3, M4). TensorFlow Metal GPU support is included via `tensorflow-metal`, though [benchmarks show](#benchmarks) the primary advantage is native ARM64 execution rather than GPU acceleration.
 
 > **Note:** Google officially supports DeepVariant only on Ubuntu 22.04. This fork patches the Bazel build system, third-party dependencies, and C++ source code to compile natively on macOS ARM64 with Apple Clang.
 
@@ -186,15 +185,79 @@ pip install absl-py protobuf==4.21.9 pysam==0.20.0 contextlib2 etils typing_exte
 
 ---
 
-## Metal GPU Acceleration
+## Benchmarks
 
-DeepVariant's `call_variants` step performs CNN inference using TensorFlow's Python API. On Apple Silicon, this is accelerated by the Metal GPU via `tensorflow-metal`.
+We benchmarked DeepVariant v1.9.0 on an **Apple M1 Max** (8 performance cores, 32-core GPU, 32 GB RAM) using the standard HG003 chr20 WGS case study and compared against published GCP metrics.
+
+### Performance: M1 Max vs GCP Instances
+
+| Stage | M1 Max | GCP 16-vCPU (est.) | GCP 96-vCPU | M1 Max vs 16-vCPU |
+|-------|--------|---------------------|-------------|---------------------|
+| `make_examples` | 4m32s | 4m49s | 57s | **1.06x faster** |
+| `call_variants` | 3m15s | 58s | 21s | 0.30x |
+| `postprocess_variants` | 16s | 10s | 9s | 0.62x |
+| **Total** | **8m03s** | **5m57s** | **1m39s** | **0.74x** |
+
+*GCP 16-vCPU times are estimated from [published scaling data](https://pmc.ncbi.nlm.nih.gov/articles/PMC7481958/) (16/32/64/96 CPU counts), adjusted for v1.9 improvements. GCP 96-vCPU times are from [docs/metrics.md](docs/metrics.md), scaled from full genome to chr20 (64M / 3.1G bases). n2-standard-16 has 8 physical Intel Cascade Lake cores with hyperthreading (16 vCPUs), matching the M1 Max's 8 physical performance cores.*
+
+### Key Findings
+
+- **`make_examples` (CPU-bound, embarrassingly parallel):** M1 Max matches or slightly beats an equivalent-core GCP instance. Apple Silicon's high per-core performance compensates for the lower core count.
+
+- **`call_variants` (TensorFlow inference):** Metal GPU provides **no measurable speedup** in v1.9. The "small model" optimization in v1.9 pre-screens easy variants on CPU and only sends hard sites to the full CNN, dramatically reducing the GPU-acceleratable workload. This is a fundamental change from earlier versions where GPU provided significant benefit. The M1 Max is ~3x slower than the estimated 16-vCPU GCP for this stage, likely because the estimated GCP number inherits favorable scaling assumptions from older DeepVariant versions.
+
+- **`postprocess_variants`:** Mostly single-threaded; comparable across platforms.
+
+- **Overall:** The M1 Max processes HG003 chr20 in ~8 minutes. It is competitive on a per-core basis for CPU-bound stages but cannot match cloud instances with many more cores. The 96-core GCP instance is ~5x faster overall, as expected given the 12:1 core ratio.
+
+### Is There Value in Running DeepVariant on Apple Silicon?
+
+**Yes, for specific use cases:**
+
+1. **Local development and testing.** Run the full DeepVariant pipeline on your laptop without Docker, cloud instances, or network access. This is valuable for pipeline development, parameter tuning, and education.
+
+2. **Small datasets and targeted regions.** For single-chromosome, exome, or panel data, the M1 Max completes in minutes — fast enough for interactive workflows without paying for cloud compute.
+
+3. **Privacy and data sovereignty.** Clinical or restricted datasets that cannot leave your facility can be processed locally on commodity hardware.
+
+4. **Cost.** No cloud compute charges, no per-hour billing. The Mac you already own can run DeepVariant. For labs running a few samples per week, the cost advantage is significant.
+
+5. **Reproducibility.** A self-contained local environment with no Docker or cloud dependencies makes it easier to reproduce results and share methods.
+
+**Not recommended for:**
+
+- Full whole-genome sequencing at scale (30x WGS, full genome). At ~6-12 hours estimated per sample, a 96-core cloud instance at ~79 minutes is more practical for production workloads.
+- High-throughput batched processing. Use cloud instances or HPC clusters.
+
+### Metal GPU Status
+
+TensorFlow Metal GPU is installed and available on all Apple Silicon Macs, but benchmarks show it does not meaningfully accelerate `call_variants` in DeepVariant v1.9. We include `tensorflow-metal` because:
+- It is required by `tensorflow-macos` for full platform support
+- Future DeepVariant versions or different model types may benefit from GPU
+- It does not hurt performance (no measurable overhead vs CPU-only)
+
+### Running the Benchmark Yourself
+
+```bash
+# Full benchmark (downloads ~5 GB of data on first run)
+bash scripts/benchmark.sh
+
+# Quick run, skip accuracy evaluation
+bash scripts/benchmark.sh --skip-happy --runs 1
+
+# Visualize results
+python3 scripts/benchmark_viz.py ~/deepvariant-benchmark/benchmark_results.json --show
+```
+
+---
+
+## TensorFlow Package Setup
 
 ### Correct Package Combination
 
 | Package | Version | Notes |
 |---------|---------|-------|
-| `tensorflow-macos` | 2.13.1 | Apple's TF build for macOS |
+| `tensorflow-macos` | 2.13.1 | Apple's TF build for macOS ARM64 |
 | `tensorflow-metal` | 1.0.0 | Metal GPU plugin |
 
 **Do NOT install the standard `tensorflow` pip package alongside `tensorflow-metal`.** Both register the Metal platform, causing a fatal "platform already registered" crash. Use `tensorflow-macos` instead.
@@ -217,9 +280,9 @@ DeepVariant has two distinct layers that matter for this port:
 
 1. **C++ extensions** (`.so` modules) — pileup image generation, allele counting, BAM/VCF I/O, realignment. These are compiled via Bazel against TensorFlow C++ headers at build time.
 
-2. **Python runtime** — ML inference/training via TensorFlow Python API. This is where `tensorflow-metal` GPU acceleration applies.
+2. **Python runtime** — ML inference/training via TensorFlow Python API. `tensorflow-metal` registers the Metal GPU device, though benchmarks show minimal benefit for the v1.9 inference workload.
 
-The C++ layer only needs TF headers at build time. The Python layer uses pip-installed TensorFlow at runtime. Metal GPU acceleration works for `call_variants` (the ML inference step) since it uses the Python TF API.
+The C++ layer only needs TF headers at build time. The Python layer uses pip-installed TensorFlow at runtime.
 
 ---
 
@@ -280,7 +343,7 @@ This fork modifies the following files from upstream DeepVariant v1.9.0. For the
 
 5. **`tf-models-official`** depends on `tensorflow-text`, which has no ARM64 wheels for 2.13.x. It is installed with `--no-deps`. DeepVariant only uses `official.modeling.optimization`, which does not require `tensorflow-text`.
 
-6. **Fast pipeline** (`fast_pipeline`) runs `make_examples` and `call_variants` simultaneously. Metal GPU acceleration applies to `call_variants` running on the GPU while `make_examples` runs on the CPU.
+6. **Fast pipeline** (`fast_pipeline`) runs `make_examples` and `call_variants` simultaneously. `tensorflow-metal` registers the Metal GPU for `call_variants` inference, though benchmarks show minimal GPU speedup in v1.9 due to the "small model" optimization.
 
 ---
 
@@ -303,7 +366,7 @@ python3 bazel-bin/deepvariant/make_examples.zip \
   --output "${OUTPUT_DIR}/examples.tfrecord.gz" \
   --examples "${OUTPUT_DIR}/examples.tfrecord.gz"
 
-# Step 2: call_variants (uses Metal GPU if available)
+# Step 2: call_variants (Metal GPU available but minimal speedup in v1.9)
 python3 bazel-bin/deepvariant/call_variants.zip \
   --outfile "${OUTPUT_DIR}/call_variants_output.tfrecord.gz" \
   --examples "${OUTPUT_DIR}/examples.tfrecord.gz" \
@@ -329,7 +392,7 @@ For the full command reference and model types (WGS, WES, PACBIO, ONT, etc.), se
 | Python | 3.10 |
 | Bazel | 5.3.0 (installed by `build-prereq-macos.sh`) |
 | TensorFlow | 2.13.1 source (build time), `tensorflow-macos` 2.13.1 (runtime) |
-| GPU | Metal via `tensorflow-metal` 1.0.0 (optional, for `call_variants`) |
+| GPU | Metal via `tensorflow-metal` 1.0.0 (included, minimal speedup in v1.9) |
 | Disk | ~30 GB (TF source + Bazel cache) |
 | RAM | 16 GB minimum, 32 GB+ recommended |
 

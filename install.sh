@@ -2,8 +2,7 @@
 # DeepVariant macOS ARM64 Installer
 #
 # Installs pre-built DeepVariant binaries, sets up a Python environment
-# with tensorflow-macos + tensorflow-metal for GPU acceleration, and downloads
-# the requested model(s).
+# with tensorflow-macos + tensorflow-metal, and downloads the requested model(s).
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/antomicblitz/deepvariant-macos-arm64-metal/r1.9/install.sh | bash
@@ -234,7 +233,8 @@ install_pip_packages() {
   # pip's resolver never selects NumPy 2.x.
   pip_q "numpy>=1.22,<=1.24.3"
 
-  # TensorFlow with Metal GPU
+  # TensorFlow for macOS ARM64 (tensorflow-metal enables Metal GPU, though
+  # benchmarks show minimal GPU speedup for call_variants in v1.9)
   pip_q "tensorflow-macos==2.13.1"
   pip_q "tensorflow-metal==1.0.0"
 
