@@ -23,24 +23,11 @@ Install pre-built binaries with a single command. No build tools required.
 ### Prerequisites
 
 - **macOS** on Apple Silicon (M1/M2/M3/M4)
-- **Python 3.10** — via one of:
-  - `brew install python@3.10`, or
-  - conda/mamba/micromamba (the installer will create a conda env with Python 3.10 automatically)
-
-### One-line Install
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/antomicblitz/deepvariant-macos-arm64-metal/r1.9/install.sh | bash
-```
-
-This downloads pre-built binaries, sets up a Python environment with Metal GPU support, and downloads the WGS model. The installer auto-detects your setup:
-
-- If **Python 3.10** is found, it creates a **venv** (lightweight, no extra tools)
-- If Python 3.10 is missing but **conda/mamba** is found, it creates a **conda env** (also installs Python 3.10 and GNU parallel for you)
+- **conda**, **mamba**, or **micromamba** (recommended), or **Python 3.10** via `brew install python@3.10`
 
 ### Conda Install (Recommended)
 
-If you have conda, mamba, or micromamba installed, you can explicitly use conda:
+If you have conda, mamba, or micromamba installed:
 
 ```bash
 USE_CONDA=1 curl -fsSL https://raw.githubusercontent.com/antomicblitz/deepvariant-macos-arm64-metal/r1.9/install.sh | bash
@@ -58,6 +45,16 @@ conda activate deepvariant
 # Then install --no-deps packages:
 pip install --no-deps tensorflow-hub==0.14.0 tensorflow-model-optimization==0.7.5 tf-models-official==2.13.1
 ```
+
+### venv Install
+
+If you have Python 3.10 installed (e.g., via `brew install python@3.10`), the installer can use a lightweight venv instead:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/antomicblitz/deepvariant-macos-arm64-metal/r1.9/install.sh | bash
+```
+
+The installer auto-detects your setup: if Python 3.10 is found it creates a venv; if Python 3.10 is missing but conda is available, it falls back to conda automatically.
 
 ### Environment Variables
 
@@ -110,6 +107,26 @@ $DEEPVARIANT_HOME/scripts/quicktest.sh
 ```
 
 This runs all three DeepVariant steps on a 10kb region of chr20, confirms Metal GPU detection, and produces a VCF output.
+
+### Uninstalling
+
+To completely remove DeepVariant:
+
+```bash
+# 1. Remove install directory (binaries, models, scripts, venv)
+rm -rf ~/.deepvariant
+
+# 2. Remove conda environment (if conda was used)
+conda env remove -n deepvariant
+
+# 3. Remove shell profile entries — edit ~/.zshrc and delete the lines:
+#    # DeepVariant macOS ARM64
+#    export DEEPVARIANT_HOME=...
+#    export PATH=...
+
+# 4. Remove quicktest data (if you ran the quicktest)
+rm -rf ~/deepvariant-quicktest
+```
 
 ---
 
