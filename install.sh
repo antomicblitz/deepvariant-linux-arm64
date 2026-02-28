@@ -126,6 +126,12 @@ if [[ "${SKIP_VENV}" != "1" ]]; then
 
     pip install -q --upgrade pip
 
+    # Pin NumPy to 1.x FIRST — tensorflow-macos 2.13.1 was compiled against
+    # NumPy 1.x and will crash with AttributeError (_ARRAY_API not found) if
+    # NumPy 2.x is present. This pin must come before any other install so that
+    # pip's resolver never selects NumPy 2.x.
+    pip install -q "numpy>=1.22,<=1.24.3"
+
     # TensorFlow with Metal GPU
     pip install -q "tensorflow-macos==2.13.1"
     pip install -q "tensorflow-metal==1.0.0"
@@ -157,7 +163,11 @@ if [[ "${SKIP_VENV}" != "1" ]]; then
     pip install -q 'pysam==0.20.0'
     pip install -q 'scikit-learn==1.0.2'
     pip install -q 'jax==0.4.35'
-    pip install -q 'markupsafe==2.0.1'
+    pip install -q 'markupsafe==2.1.1'
+
+    # Re-pin NumPy as a safety net in case any package above upgraded it.
+    # jax and tensorflow-datasets in particular are known to widen numpy bounds.
+    pip install -q --force-reinstall "numpy>=1.22,<=1.24.3"
 
     echo "  Python venv created at ${VENV_DIR}"
   fi
