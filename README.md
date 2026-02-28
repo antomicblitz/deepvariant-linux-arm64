@@ -23,17 +23,15 @@ Install pre-built binaries with a single command. No build tools required.
 ### Prerequisites
 
 - **macOS** on Apple Silicon (M1/M2/M3/M4)
-- **conda**, **mamba**, or **micromamba** (recommended), or **Python 3.10** via `brew install python@3.10`
+- **conda**, **mamba**, or **micromamba** — native ARM64 (e.g. [Miniforge](https://github.com/conda-forge/miniforge))
 
-### Conda Install (Recommended)
-
-If you have conda, mamba, or micromamba installed:
+### Install
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/antomicblitz/deepvariant-macos-arm64-metal/r1.9/install.sh | USE_CONDA=1 bash
 ```
 
-This creates a `deepvariant` conda environment with Python 3.10, GNU parallel, and all dependencies. No need to install Python 3.10 separately.
+This creates a `deepvariant` conda environment with Python 3.10, GNU parallel, and all dependencies. Activate it with `conda activate deepvariant`.
 
 Alternatively, create the environment manually from the included `environment.yml`:
 
@@ -46,15 +44,15 @@ conda activate deepvariant
 pip install --no-deps tensorflow-hub==0.14.0 tensorflow-model-optimization==0.7.5 tf-models-official==2.13.1
 ```
 
-### venv Install
+### venv Install (Alternative)
 
-If you have Python 3.10 installed (e.g., via `brew install python@3.10`), the installer can use a lightweight venv instead:
+If you already have **Python 3.10** installed (e.g., `brew install python@3.10`), the installer can use a lightweight venv instead of conda:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/antomicblitz/deepvariant-macos-arm64-metal/r1.9/install.sh | bash
 ```
 
-The installer auto-detects your setup: if Python 3.10 is found it creates a venv; if Python 3.10 is missing but conda is available, it falls back to conda automatically.
+> **Note:** Python 3.10 specifically is required — `tensorflow-macos 2.13.1` does not support other Python versions. You also need GNU parallel installed separately (`brew install parallel`).
 
 ### Environment Variables
 
