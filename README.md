@@ -1,263 +1,281 @@
-<img src="docs/images/dv_logo.png" width=50% height=50%>
+# DeepVariant — macOS ARM64 (Apple Silicon) Native Build
 
-[![release](https://img.shields.io/badge/release-v1.9-green?logo=github)](https://github.com/google/deepvariant/releases)
-[![announcements](https://img.shields.io/badge/announcements-blue)](https://groups.google.com/d/forum/deepvariant-announcements)
-[![blog](https://img.shields.io/badge/blog-orange)](https://goo.gl/deepvariant)
+[![release](https://img.shields.io/badge/base-v1.9.0-green?logo=github)](https://github.com/google/deepvariant/releases)
+[![platform](https://img.shields.io/badge/platform-macOS%20ARM64-blue?logo=apple)](https://support.apple.com/en-us/116943)
+[![gpu](https://img.shields.io/badge/GPU-Metal%20via%20tensorflow--metal-orange)](https://developer.apple.com/metal/)
 
-DeepVariant is a deep learning-based variant caller that takes aligned reads (in
-BAM or CRAM format), produces pileup image tensors from them, classifies each
-tensor using a convolutional neural network, and finally reports the results in
-a standard VCF or gVCF file.
+This is a fork of [Google DeepVariant](https://github.com/google/deepvariant) v1.9.0 that builds and runs **natively on macOS with Apple Silicon** (M1, M2, M3, M4). It includes Metal GPU acceleration for the `call_variants` inference step via `tensorflow-metal`.
 
-DeepVariant supports germline variant-calling in diploid organisms.
+> **Note:** Google officially supports DeepVariant only on Ubuntu 22.04. This fork patches the Bazel build system, third-party dependencies, and C++ source code to compile natively on macOS ARM64 with Apple Clang.
 
-**DeepVariant case-studies for germline variant calling:**
+## What is DeepVariant?
 
-*   NGS (Illumina or Element) data for either a
-    [whole genome](docs/deepvariant-case-study.md) or
-    [whole exome](docs/deepvariant-exome-case-study.md).
-*   PacBio HiFi data
-    [PacBio case study](docs/deepvariant-pacbio-model-case-study.md).
-*   Oxford Nanopore R10.4.1
-    [Simplex case study](docs/deepvariant-ont-r104-simplex-case-study.md).
-*   Complete Genomics
-    [T7 case study](docs/deepvariant-complete-t7-case-study.md);
-    [G400 case study](docs/deepvariant-complete-g400-case-study.md).
-*   [Roche SBX case study](docs/roche-sbx-case-study.md) for SBX-D and SBX-Fast data.
-*   Pangenome-mapping-based case-study:
-    [vg case study](docs/deepvariant-vg-case-study.md).
-*   RNA data for
-    [PacBio Iso-Seq/MAS-Seq case study](docs/deepvariant-masseq-case-study.md)
-    and [Illumina RNA-seq Case Study](docs/deepvariant-rnaseq-case-study.md).
-*   Hybrid PacBio HiFi + Illumina WGS, see the
-    [hybrid case study](docs/deepvariant-hybrid-case-study.md).
+DeepVariant is a deep learning-based variant caller that takes aligned reads (in BAM or CRAM format), produces pileup image tensors from them, classifies each tensor using a convolutional neural network, and finally reports the results in a standard VCF or gVCF file.
 
-**Pangenome-aware DeepVariant case-studies:**
+DeepVariant supports germline variant-calling in diploid organisms. For full documentation on DeepVariant's capabilities, case studies, and supported data types, see the [upstream repository](https://github.com/google/deepvariant).
 
-*   Pangenome-aware DeepVariant WGS (Illumina or Element):
-    [Mapped with BWA](docs/pangenome-aware-wgs-bwa-case-study.md),
-    [Mapped with VG](docs/pangenome-aware-wgs-vg-case-study.md).
-*   Pangenome-aware DeepVariant WES (Illumina or Element):
-    [Mapped with BWA](docs/pangenome-aware-wes-bwa-case-study.md).
+---
 
-We have also adapted DeepVariant for somatic calling. See the
-[DeepSomatic](https://github.com/google/deepsomatic) repo for details.
-
-Please also note:
-
-*   DeepVariant currently supports variant calling on organisms where the
-    ploidy/copy-number is two. This is because the genotypes supported are
-    hom-alt, het, and hom-ref.
-*   The models included with DeepVariant are only trained on human data. For
-    other organisms, see the
-    [blog post on non-human variant-calling](https://google.github.io/deepvariant/posts/2018-12-05-improved-non-human-variant-calling-using-species-specific-deepvariant-models/)
-    for some possible pitfalls and how to handle them.
-
-## DeepTrio
-
-DeepTrio is a deep learning-based trio variant caller built on top of
-DeepVariant. DeepTrio extends DeepVariant's functionality, allowing it to
-utilize the power of neural networks to predict genomic variants in trios or
-duos. See [this page](docs/deeptrio-details.md) for more details and
-instructions on how to run DeepTrio.
-
-DeepTrio supports germline variant-calling in diploid organisms for the
-following types of input data:
-
-*   NGS (Illumina) data for either
-    [whole genome](docs/deeptrio-wgs-case-study.md) or whole exome.
-*   PacBio HiFi data, see the
-    [PacBio case study](docs/deeptrio-pacbio-case-study.md).
-
-Please also note:
-
-*   All DeepTrio models were trained on human data.
-*   It is possible to use DeepTrio with only 2 samples (child, and one parent).
-*   External tool [GLnexus](https://github.com/dnanexus-rnd/GLnexus) is used to
-    merge output VCFs.
-
-## How to run DeepVariant
-
-We recommend using our Docker solution. The command will look like this:
-
-```
-BIN_VERSION="1.9.0"
-docker run \
-  -v "YOUR_INPUT_DIR":"/input" \
-  -v "YOUR_OUTPUT_DIR:/output" \
-  google/deepvariant:"${BIN_VERSION}" \
-  /opt/deepvariant/bin/run_deepvariant \
-  --model_type=WGS \ **Replace this string with exactly one of the following [WGS,WES,PACBIO,ONT_R104,HYBRID_PACBIO_ILLUMINA]**
-  --ref=/input/YOUR_REF \
-  --reads=/input/YOUR_BAM \
-  --output_vcf=/output/YOUR_OUTPUT_VCF \
-  --output_gvcf=/output/YOUR_OUTPUT_GVCF \
-  --num_shards=$(nproc) \ **This will use all your cores to run make_examples. Feel free to change.**
-  --vcf_stats_report=true \ **Optional. Creates VCF statistics report in html file. Default is false.
-  --disable_small_model=true \ **Optional. Disables the small model from make_examples stage. Default is false.
-  --logging_dir=/output/logs \ **Optional. This saves the log output for each stage separately.
-  --haploid_contigs="chrX,chrY" \ **Optional. Heterozygous variants in these contigs will be re-genotyped as the most likely of reference or homozygous alternates. For a sample with karyotype XY, it should be set to "chrX,chrY" for GRCh38 and "X,Y" for GRCh37. For a sample with karyotype XX, this should not be used.
-  --par_regions_bed="/input/GRCh3X_par.bed" \ **Optional. If --haploid_contigs is set, then this can be used to provide PAR regions to be excluded from genotype adjustment. Download links to this files are available in this page.
-  --dry_run=false **Default is false. If set to true, commands will be printed out but not executed.
-```
-
-For details on X,Y support, please see
-[DeepVariant haploid support](docs/deepvariant-haploid-support.md) and the case
-study in
-[DeepVariant X, Y case study](docs/deepvariant-xy-calling-case-study.md). You
-can download the PAR bed files from here:
-[GRCh38_par.bed](https://storage.googleapis.com/deepvariant/case-study-testdata/GRCh38_PAR.bed),
-[GRCh37_par.bed](https://storage.googleapis.com/deepvariant/case-study-testdata/GRCh37_PAR.bed).
-
-To see all flags you can use, run: `docker run
-google/deepvariant:"${BIN_VERSION}"`
-
-If you're using GPUs, or want to use Singularity instead, see
-[Quick Start](docs/deepvariant-quick-start.md) for more details.
-
-If you are running on a machine with a GPU, an experimental mode is available
-that enables running the `make_examples` stage on the CPU while the
- `call_variants` stage runs on the GPU simultaneously.
-For more details, refer to the [Fast Pipeline case study](docs/deepvariant-fast-pipeline-case-study.md).
-
-For more information, also see:
-
-*   [Full documentation list](docs/README.md)
-*   [Detailed usage guide](docs/deepvariant-details.md) with more information on
-    the input and output file formats and how to work with them.
-*   [Best practices for multi-sample variant calling with DeepVariant](docs/trio-merge-case-study.md)
-*   [(Advanced) Training tutorial](docs/deepvariant-training-case-study.md)
-*   [DeepVariant's Frequently Asked Questions, FAQ](docs/FAQ.md)
-
-## How to cite
-
-If you're using DeepVariant in your work, please cite:
-
-[A universal SNP and small-indel variant caller using deep neural networks. *Nature Biotechnology* 36, 983–987 (2018).](https://rdcu.be/7Dhl) <br/>
-Ryan Poplin, Pi-Chuan Chang, David Alexander, Scott Schwartz, Thomas Colthurst, Alexander Ku, Dan Newburger, Jojo Dijamco, Nam Nguyen, Pegah T. Afshar, Sam S. Gross, Lizzie Dorfman, Cory Y. McLean, and Mark A. DePristo.<br/>
-doi: https://doi.org/10.1038/nbt.4235
-
-Additionally, if you are generating multi-sample calls using our
-[DeepVariant and GLnexus Best Practices](docs/trio-merge-case-study.md), please
-cite:
-
-[Accurate, scalable cohort variant calls using DeepVariant and GLnexus.
-_Bioinformatics_ (2021).](https://doi.org/10.1093/bioinformatics/btaa1081)<br/>
-Taedong Yun, Helen Li, Pi-Chuan Chang, Michael F. Lin, Andrew Carroll, and Cory
-Y. McLean.<br/>
-doi: https://doi.org/10.1093/bioinformatics/btaa1081
-
-## Why Use DeepVariant?
-
-*   **High accuracy** - DeepVariant won 2020
-    [PrecisionFDA Truth Challenge V2](https://precision.fda.gov/challenges/10/results)
-    for All Benchmark Regions for ONT, PacBio, and Multiple Technologies
-    categories, and 2016
-    [PrecisionFDA Truth Challenge](https://precision.fda.gov/challenges/truth/results)
-    for best SNP Performance. DeepVariant maintains high accuracy across data
-    from different sequencing technologies, prep methods, and species. For
-    [lower coverage](https://google.github.io/deepvariant/posts/2019-09-10-twenty-is-the-new-thirty-comparing-current-and-historical-wgs-accuracy-across-coverage/),
-    using DeepVariant makes an especially great difference. See
-    [metrics](docs/metrics.md) for the latest accuracy numbers on each of the
-    sequencing types.
-*   **Flexibility** - Out-of-the-box use for
-    [PCR-positive](https://ai.googleblog.com/2018/04/deepvariant-accuracy-improvements-for.html)
-    samples and
-    [low quality sequencing runs](https://blog.dnanexus.com/2018-01-16-evaluating-the-performance-of-ngs-pipelines-on-noisy-wgs-data/),
-    and easy adjustments for
-    [different sequencing technologies](https://google.github.io/deepvariant/posts/2019-01-14-highly-accurate-snp-and-indel-calling-on-pacbio-ccs-with-deepvariant/)
-    and
-    [non-human species](https://google.github.io/deepvariant/posts/2018-12-05-improved-non-human-variant-calling-using-species-specific-deepvariant-models/).
-*   **Ease of use** - No filtering is needed beyond setting your preferred
-    minimum quality threshold.
-*   **Cost effectiveness** - With a single non-preemptible n1-standard-16
-    machine on Google Cloud, it costs ~$11.8 to call a 30x whole genome and
-    ~$0.89 to call an exome. With preemptible pricing, the cost is $2.84 for a
-    30x whole genome and $0.21 for whole exome (not considering preemption).
-*   **Speed** - See [metrics](docs/metrics.md) for the runtime of all supported
-    datatypes on a 96-core CPU-only machine</sup>. Multiple options for
-    acceleration exist.
-*   **Usage options** - DeepVariant can be run via Docker or binaries, using
-    both on-premise hardware or in the cloud, with support for hardware
-    accelerators like GPUs and TPUs.
-
-<a name="myfootnote1">(1)</a>: Time estimates do not include mapping.
-
-## How DeepVariant works
-
-![Stages in DeepVariant](docs/images/inference_flow_diagram.svg)
-
-For more information on the pileup images and how to read them, please see the
-["Looking through DeepVariant's Eyes" blog post](https://google.github.io/deepvariant/posts/2020-02-20-looking-through-deepvariants-eyes/).
-
-DeepVariant relies on [Nucleus](https://github.com/google/nucleus), a library of
-Python and C++ code for reading and writing data in common genomics file formats
-(like SAM and VCF) designed for painless integration with the
-[TensorFlow](https://www.tensorflow.org/) machine learning framework. Nucleus
-was built with DeepVariant in mind and open-sourced separately so it can be used
-by anyone in the genomics research community for other projects. See this blog
-post on
-[Using Nucleus and TensorFlow for DNA Sequencing Error Correction](https://google.github.io/deepvariant/posts/2019-01-31-using-nucleus-and-tensorflow-for-dna-sequencing-error-correction/).
-
-## DeepVariant Setup
+## Quick Start
 
 ### Prerequisites
 
-*   Unix-like operating system (cannot run on Windows)
-*   Python 3.10
+- **macOS** on Apple Silicon (M1/M2/M3/M4)
+- **Homebrew** — [https://brew.sh](https://brew.sh)
+- **Python 3.10** — `brew install python@3.10`
+- **Xcode Command Line Tools** — `xcode-select --install`
+- ~30 GB disk space (TensorFlow source + Bazel cache)
 
-### Official Solutions
+### 1. Clone the Repository
 
-Below are the official solutions provided by the
-[Genomics team in Google Health](https://health.google/health-research/).
+```bash
+git clone https://github.com/antomicblitz/deepvariant-osx_arm64.git
+cd deepvariant-osx_arm64
+git checkout r1.9
+```
 
-Name                                                                                                | Description
-:-------------------------------------------------------------------------------------------------: | -----------
-[Docker](docs/deepvariant-quick-start.md)           | This is the recommended method.
-[Build from source](docs/deepvariant-build-test.md) | DeepVariant comes with scripts to build it on Ubuntu 20.04. To build and run on other Unix-based systems, you will need to modify these scripts.
-Prebuilt Binaries                                                                                   | Available at [`gs://deepvariant/`](https://console.cloud.google.com/storage/browser/deepvariant). These are compiled to use SSE4 and AVX instructions, so you will need a CPU (such as Intel Sandy Bridge) that supports them. You can check the `/proc/cpuinfo` file on your computer, which lists these features under "flags".
+### 2. Install Build Prerequisites
 
-## Contribution Guidelines
+This script installs Homebrew packages, Bazel 5.3.0, abseil-cpp, CLIF C++ runtime, and clones/configures TensorFlow 2.13.1 source:
 
-Please [open a pull request](https://github.com/google/deepvariant/compare) if
-you wish to contribute to DeepVariant. Note, we have not set up the
-infrastructure to merge pull requests externally. If you agree, we will test and
-submit the changes internally and mention your contributions in our
-[release notes](https://github.com/google/deepvariant/releases). We apologize
-for any inconvenience.
+```bash
+./build-prereq-macos.sh
+```
 
-If you have any difficulty using DeepVariant, feel free to
-[open an issue](https://github.com/google/deepvariant/issues/new). If you have
-general questions not specific to DeepVariant, we recommend that you post on a
-community discussion forum such as [BioStars](https://www.biostars.org/).
+This runs `run-prereq-macos.sh` automatically to install Python packages and TensorFlow with Metal GPU support.
+
+### 3. Patch zlib in Bazel Cache (Required After `bazel clean`)
+
+After the first Bazel build starts downloading external deps, you must patch zlib's `zutil.h`. This is needed because modern macOS defines `TARGET_OS_MAC`, which causes zlib to set `fdopen` to `NULL`:
+
+```bash
+# Find the cached zutil.h (path may vary — check your Bazel output base)
+ZUTIL=$(find $(bazel info output_base)/external/zlib -name zutil.h 2>/dev/null)
+
+# Patch: prevent fdopen=NULL on macOS
+gsed -i 's/#if defined(MACOS) || defined(TARGET_OS_MAC)/#if defined(MACOS) \&\& !defined(__APPLE__)/' "$ZUTIL"
+```
+
+> **Important:** This patch lives in the Bazel cache and must be reapplied after `bazel clean` or any cache wipe.
+
+### 4. Build
+
+```bash
+source settings.sh
+./build_release_binaries.sh
+```
+
+This builds all DeepVariant and DeepTrio binaries. The build uses `--config=macos` automatically on Darwin.
+
+### 5. Set Up a Python Virtual Environment (Recommended)
+
+A clean venv avoids package conflicts between `tensorflow-macos` and other TensorFlow packages:
+
+```bash
+python3.10 -m venv ~/dv-venv
+source ~/dv-venv/bin/activate
+
+# Install runtime deps
+pip install tensorflow-macos==2.13.1
+pip install tensorflow-metal==1.0.0
+pip install --no-deps tensorflow-hub==0.14.0
+pip install --no-deps tensorflow-model-optimization==0.7.5
+pip install --no-deps tf-models-official==2.13.1
+
+# Install remaining Python deps (from run-prereq-macos.sh)
+pip install absl-py protobuf==4.21.9 pysam==0.20.0 \
+  contextlib2 etils typing_extensions importlib_resources \
+  sortedcontainers==2.1.0 intervaltree==3.1.0 ml_collections \
+  clu==0.0.9 joblib psutil pandas==1.3.4 Pillow==9.5.0 \
+  scikit-learn==1.0.2 jax==0.4.35 opencv-python-headless
+```
+
+### 6. Verify
+
+```bash
+# Activate your venv first
+source ~/dv-venv/bin/activate
+
+# Check binaries
+python3 bazel-bin/deepvariant/call_variants.zip --help
+python3 bazel-bin/deepvariant/make_examples.zip --help
+
+# Verify Metal GPU
+python3 -c "
+import tensorflow as tf
+print('TensorFlow:', tf.__version__)
+for d in tf.config.list_physical_devices():
+    print(f'  {d.device_type}: {d.name}')
+gpus = tf.config.list_physical_devices('GPU')
+print(f'Metal GPU: {\"ENABLED\" if gpus else \"NOT AVAILABLE\"} ({len(gpus)} device(s))')
+"
+```
+
+---
+
+## Metal GPU Acceleration
+
+DeepVariant's `call_variants` step performs CNN inference using TensorFlow's Python API. On Apple Silicon, this is accelerated by the Metal GPU via `tensorflow-metal`.
+
+### Correct Package Combination
+
+| Package | Version | Notes |
+|---------|---------|-------|
+| `tensorflow-macos` | 2.13.1 | Apple's TF build for macOS |
+| `tensorflow-metal` | 1.0.0 | Metal GPU plugin |
+
+**Do NOT install the standard `tensorflow` pip package alongside `tensorflow-metal`.** Both register the Metal platform, causing a fatal "platform already registered" crash. Use `tensorflow-macos` instead.
+
+### Dependencies that Pull in `tensorflow`
+
+Some packages (e.g., `tensorflow-hub`, `tensorflow-model-optimization`, `tf-models-official`) list `tensorflow` as a dependency and will install the regular package, breaking your setup. Install these with `--no-deps`:
+
+```bash
+pip install --no-deps tensorflow-hub==0.14.0
+pip install --no-deps tensorflow-model-optimization==0.7.5
+pip install --no-deps tf-models-official==2.13.1
+```
+
+---
+
+## Architecture
+
+DeepVariant has two distinct layers that matter for this port:
+
+1. **C++ extensions** (`.so` modules) — pileup image generation, allele counting, BAM/VCF I/O, realignment. These are compiled via Bazel against TensorFlow C++ headers at build time.
+
+2. **Python runtime** — ML inference/training via TensorFlow Python API. This is where `tensorflow-metal` GPU acceleration applies.
+
+The C++ layer only needs TF headers at build time. The Python layer uses pip-installed TensorFlow at runtime. Metal GPU acceleration works for `call_variants` (the ML inference step) since it uses the Python TF API.
+
+---
+
+## What Was Changed
+
+This fork modifies the following files from upstream DeepVariant v1.9.0. For the full list, see [the build fixes log](docs/macos-arm64-build-fixes.md).
+
+### New Files
+
+| File | Purpose |
+|------|---------|
+| `build-prereq-macos.sh` | Homebrew deps, Bazel 5.3.0, abseil-cpp, CLIF runtime, TF source |
+| `run-prereq-macos.sh` | Python packages, `tensorflow-macos` + `tensorflow-metal` |
+| `third_party/boost.BUILD` | Boost headers from Homebrew (`/opt/homebrew/include`) |
+
+### Modified Files
+
+| File | Change |
+|------|--------|
+| `.bazelrc` | `--config=macos_arm64`, `BOOST_PROCESS_VERSION=1`, `-Wno-unknown-warning-option` |
+| `BUILD` | `py_runtime` interpreter path |
+| `WORKSPACE` | `new_local_repository` entries for Boost and CLIF at `/opt/homebrew` |
+| `settings.sh` | Darwin/ARM64 detection, Homebrew Python paths, macOS-compatible copt flags |
+| `build_release_binaries.sh` | BSD `ln`/`sed` compat, `clang++` linking, zsh shebang fix, `PYTHON_BINARY` patch |
+| `third_party/htslib.BUILD` | macOS `config.h` (no `fdatasync`, no SSE, `.dylib` plugin extension) |
+| `third_party/libssw.BUILD` | `sse2neon.h` for ARM64 SSW (Smith-Waterman) |
+| `third_party/sdsl_lite.BUILD` | Removed `"."` from includes (version file conflict) |
+| `third_party/clif.BUILD` | Added abseil deps for CLIF C++ runtime |
+| `third_party/gbwt.BUILD` | Added `@boost//:boost` dependency |
+| `third_party/gbwtgraph.BUILD` | Added `@boost//:boost` dependency |
+| `deepvariant/BUILD` | Added `@boost//:boost` to `fast_pipeline`, `stream_examples`, etc. |
+| `deepvariant/realigner/BUILD` | Added `@boost//:boost` to `debruijn_graph` |
+| `third_party/nucleus/io/BUILD` | Added `@boost//:boost` to `gbz_reader` |
+| `deepvariant/fast_pipeline.h` | Boost 1.90 v1 process API includes |
+| `deepvariant/fast_pipeline.cc` | Boost 1.90 v1 process API includes |
+| `deepvariant/allelecounter.cc` | `int64_t`/`long` type mismatch fix |
+| `deepvariant/alt_aligned_pileup_lib.cc` | `int64_t`/`long` type mismatch fixes |
+| `deepvariant/make_examples_native.cc` | `int64_t`/`long` type mismatch fix |
+
+### External Patches (Outside This Repo)
+
+| Target | Change |
+|--------|--------|
+| `tensorflow/tensorflow.bzl` | Replaced GNU `ln -r -s` with Python `os.path.relpath` for macOS |
+| `external/zlib/zutil.h` (Bazel cache) | Prevent `fdopen=NULL` on macOS (`TARGET_OS_MAC` guard) |
+
+---
+
+## Known Issues
+
+1. **zlib `zutil.h` patch is not persistent.** It lives in the Bazel cache and must be reapplied after `bazel clean`. See step 3 above.
+
+2. **zsh escapes `!` in strings.** The build script uses `bytes([0x23, 0x21])` to write `#!` shebangs. If you write custom scripts that generate shebangs, be aware of this.
+
+3. **`int64_t` is `long long` on macOS ARM64**, while it is `long` on Linux x86_64. Both are 64-bit, but they are different types to the compiler, causing `std::max(int64_t, 0L)` template deduction failures. All instances in DeepVariant have been fixed.
+
+4. **Boost 1.90+** split the `process` API into v1 and v2 namespaces. The build uses `-DBOOST_PROCESS_VERSION=1` to select v1.
+
+5. **`tf-models-official`** depends on `tensorflow-text`, which has no ARM64 wheels for 2.13.x. It is installed with `--no-deps`. DeepVariant only uses `official.modeling.optimization`, which does not require `tensorflow-text`.
+
+6. **Fast pipeline** (`fast_pipeline`) runs `make_examples` and `call_variants` simultaneously. Metal GPU acceleration applies to `call_variants` running on the GPU while `make_examples` runs on the CPU.
+
+---
+
+## Running DeepVariant
+
+Once built, DeepVariant is run the same way as on Linux, but using the zip binaries directly instead of Docker:
+
+```bash
+# Activate venv with tensorflow-macos
+source ~/dv-venv/bin/activate
+
+INPUT_DIR="path/to/input"
+OUTPUT_DIR="path/to/output"
+
+# Step 1: make_examples
+python3 bazel-bin/deepvariant/make_examples.zip \
+  --mode calling \
+  --ref "${INPUT_DIR}/reference.fasta" \
+  --reads "${INPUT_DIR}/reads.bam" \
+  --output "${OUTPUT_DIR}/examples.tfrecord.gz" \
+  --examples "${OUTPUT_DIR}/examples.tfrecord.gz"
+
+# Step 2: call_variants (uses Metal GPU if available)
+python3 bazel-bin/deepvariant/call_variants.zip \
+  --outfile "${OUTPUT_DIR}/call_variants_output.tfrecord.gz" \
+  --examples "${OUTPUT_DIR}/examples.tfrecord.gz" \
+  --checkpoint "path/to/model.ckpt"
+
+# Step 3: postprocess_variants
+python3 bazel-bin/deepvariant/postprocess_variants.zip \
+  --ref "${INPUT_DIR}/reference.fasta" \
+  --infile "${OUTPUT_DIR}/call_variants_output.tfrecord.gz" \
+  --outfile "${OUTPUT_DIR}/output.vcf.gz"
+```
+
+For the full command reference and model types (WGS, WES, PACBIO, ONT, etc.), see the [upstream documentation](https://github.com/google/deepvariant/blob/r1.9/docs/deepvariant-details.md).
+
+---
+
+## System Requirements
+
+| Component | Requirement |
+|-----------|-------------|
+| OS | macOS 11+ (Big Sur or later) |
+| Architecture | Apple Silicon (M1, M2, M3, M4) |
+| Python | 3.10 |
+| Bazel | 5.3.0 (installed by `build-prereq-macos.sh`) |
+| TensorFlow | 2.13.1 source (build time), `tensorflow-macos` 2.13.1 (runtime) |
+| GPU | Metal via `tensorflow-metal` 1.0.0 (optional, for `call_variants`) |
+| Disk | ~30 GB (TF source + Bazel cache) |
+| RAM | 16 GB minimum, 32 GB+ recommended |
+
+---
+
+## How to Cite
+
+If you use DeepVariant in your work, please cite:
+
+[A universal SNP and small-indel variant caller using deep neural networks. *Nature Biotechnology* 36, 983-987 (2018).](https://rdcu.be/7Dhl)
+Ryan Poplin, Pi-Chuan Chang, David Alexander, Scott Schwartz, Thomas Colthurst, Alexander Ku, Dan Newburger, Jojo Dijamco, Nam Nguyen, Pegah T. Afshar, Sam S. Gross, Lizzie Dorfman, Cory Y. McLean, and Mark A. DePristo.
+doi: https://doi.org/10.1038/nbt.4235
 
 ## License
 
 [BSD-3-Clause license](LICENSE)
 
-## Acknowledgements
-
-DeepVariant happily makes use of many open source packages. We would like to
-specifically call out a few key ones:
-
-*   [Boost Graph Library](http://www.boost.org/doc/libs/1_65_1/libs/graph/doc/index.html)
-*   [abseil-cpp](https://github.com/abseil/abseil-cpp) and
-    [abseil-py](https://github.com/abseil/abseil-py)
-*   [pybind11](https://github.com/pybind/pybind11)
-*   [GNU Parallel](https://www.gnu.org/software/parallel/)
-*   [htslib & samtools](http://www.htslib.org/)
-*   [Nucleus](https://github.com/google/nucleus)
-*   [numpy](http://www.numpy.org/)
-*   [SSW Library](https://github.com/mengyao/Complete-Striped-Smith-Waterman-Library)
-*   [TensorFlow](https://www.tensorflow.org/)
-
-We thank all of the developers and contributors to these packages for their
-work.
-
 ## Disclaimer
 
 This is not an official Google product.
 
-NOTE: the content of this research code repository (i) is not intended to be a
-medical device; and (ii) is not intended for clinical use of any kind, including
-but not limited to diagnosis or prognosis.
+NOTE: the content of this research code repository (i) is not intended to be a medical device; and (ii) is not intended for clinical use of any kind, including but not limited to diagnosis or prognosis.
