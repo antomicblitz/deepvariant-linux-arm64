@@ -209,50 +209,67 @@ echo "  Binaries installed to ${DEEPVARIANT_HOME}/bin/"
 install_pip_packages() {
   echo "--- Installing Python packages (this may take a few minutes)..."
 
-  pip install -q --upgrade pip
+  # pip_q: install quietly and suppress harmless dependency-resolver warnings.
+  # We intentionally use --no-deps for several packages (to avoid pulling in
+  # the wrong tensorflow), which causes pip to print spurious "ERROR: pip's
+  # dependency resolver" messages on every subsequent install. These are
+  # cosmetic — real failures still abort via set -e (non-zero exit code).
+  pip_q() {
+    local _stderr
+    _stderr=$(mktemp)
+    if pip install -q "$@" 2>"$_stderr"; then
+      rm -f "$_stderr"
+    else
+      cat "$_stderr" >&2
+      rm -f "$_stderr"
+      return 1
+    fi
+  }
+
+  pip_q --upgrade pip
 
   # Pin NumPy to 1.x FIRST — tensorflow-macos 2.13.1 was compiled against
   # NumPy 1.x and will crash with AttributeError (_ARRAY_API not found) if
   # NumPy 2.x is present. This pin must come before any other install so that
   # pip's resolver never selects NumPy 2.x.
-  pip install -q "numpy>=1.22,<=1.24.3"
+  pip_q "numpy>=1.22,<=1.24.3"
 
   # TensorFlow with Metal GPU
-  pip install -q "tensorflow-macos==2.13.1"
-  pip install -q "tensorflow-metal==1.0.0"
+  pip_q "tensorflow-macos==2.13.1"
+  pip_q "tensorflow-metal==1.0.0"
 
   # Packages that would pull in regular 'tensorflow' — install without deps
-  pip install -q --no-deps "tensorflow-hub==0.14.0"
-  pip install -q --no-deps "tensorflow-model-optimization==0.7.5"
-  pip install -q --no-deps "tf-models-official==2.13.1"
+  pip_q --no-deps "tensorflow-hub==0.14.0"
+  pip_q --no-deps "tensorflow-model-optimization==0.7.5"
+  pip_q --no-deps "tf-models-official==2.13.1"
 
   # tf-models-official runtime deps that DeepVariant actually needs
-  pip install -q tensorflow-datasets gin-config seqeval \
+  pip_q tensorflow-datasets gin-config seqeval \
     'opencv-python-headless>=4.5' tf-slim sacrebleu pyyaml
 
   # DeepVariant Python dependencies
-  pip install -q absl-py parameterized
-  pip install -q contextlib2
-  pip install -q etils typing_extensions importlib_resources
-  pip install -q 'sortedcontainers==2.1.0'
-  pip install -q 'intervaltree==3.1.0'
-  pip install -q 'mock>=2.0.0'
-  pip install -q ml_collections
-  pip install -q --ignore-installed PyYAML
-  pip install -q 'clu==0.0.9'
-  pip install -q 'protobuf==4.21.9'
-  pip install -q 'requests>=2.18'
-  pip install -q joblib psutil
-  pip install -q 'pandas==1.3.4'
-  pip install -q 'Pillow==9.5.0'
-  pip install -q 'pysam==0.20.0'
-  pip install -q 'scikit-learn==1.0.2'
-  pip install -q 'jax==0.4.35'
-  pip install -q 'markupsafe==2.1.1'
+  pip_q absl-py parameterized
+  pip_q contextlib2
+  pip_q etils typing_extensions importlib_resources
+  pip_q 'sortedcontainers==2.1.0'
+  pip_q 'intervaltree==3.1.0'
+  pip_q 'mock>=2.0.0'
+  pip_q ml_collections
+  pip_q --ignore-installed PyYAML
+  pip_q 'clu==0.0.9'
+  pip_q 'protobuf==4.21.9'
+  pip_q 'requests>=2.18'
+  pip_q joblib psutil
+  pip_q 'pandas==1.3.4'
+  pip_q 'Pillow==9.5.0'
+  pip_q 'pysam==0.20.0'
+  pip_q 'scikit-learn==1.0.2'
+  pip_q 'jax==0.4.35'
+  pip_q 'markupsafe==2.1.1'
 
   # Re-pin NumPy as a safety net in case any package above upgraded it.
   # jax and tensorflow-datasets in particular are known to widen numpy bounds.
-  pip install -q --force-reinstall "numpy>=1.22,<=1.24.3"
+  pip_q --force-reinstall "numpy>=1.22,<=1.24.3"
 }
 
 ################################################################################
