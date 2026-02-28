@@ -236,9 +236,13 @@ if [[ "$ENV_TYPE" == "conda" ]]; then
     # running under Rosetta) may default to osx-64 and fail to solve.
     export CONDA_SUBDIR=osx-arm64
 
+    # Disable strict channel priority — the classic solver in older conda
+    # versions has bugs with __osx virtual package version comparisons
+    # under strict mode, causing false "incompatible with your system" errors.
+    export CONDA_CHANNEL_PRIORITY=flexible
+
     # Create env with Python 3.10 and GNU parallel.
-    # --override-channels ensures only conda-forge is used (avoids conflicts
-    # with the defaults channel under strict channel priority).
+    # --override-channels ensures only conda-forge is used.
     ${CONDA_CMD} create -y -n "${CONDA_ENV_NAME}" python=3.10 parallel \
       --override-channels -c conda-forge
 
