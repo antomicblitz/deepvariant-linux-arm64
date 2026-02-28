@@ -56,7 +56,14 @@ function fix_zip_file {
   unzip -qq "${BN}.zip"
 
   # Step 3: Restore the symbolic links.
-  find "runfiles/com_google_deepvariant" -name '*.so' ! -name 'examples_from_stream.so' -exec ln --force -s --relative "runfiles/com_google_protobuf/python/google/protobuf/pyext/_message.so" {} \;
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    # macOS: use Python to compute relative symlinks (BSD ln lacks --relative)
+    find "runfiles/com_google_deepvariant" -name '*.so' ! -name 'examples_from_stream.so' -print0 | while IFS= read -r -d '' target; do
+      ln -f -s "$(python3 -c "import os.path; print(os.path.relpath('runfiles/com_google_protobuf/python/google/protobuf/pyext/_message.so', os.path.dirname('${target}')))")" "${target}"
+    done
+  else
+    find "runfiles/com_google_deepvariant" -name '*.so' ! -name 'examples_from_stream.so' -exec ln --force -s --relative "runfiles/com_google_protobuf/python/google/protobuf/pyext/_message.so" {} \;
+  fi
 
   # Step 4: Fix the __main__.py's use of zipfile, which can't handle
   # symbolic links.  Replace it with an invocation of unzip, which can.
@@ -66,10 +73,18 @@ function fix_zip_file {
   #     zf.extract(info, dest_dir)
   #     # UNC-prefixed paths must be absolute/normalized. See
 
-  sed -i 's/  with zipfile.ZipFile(zip_path) as zf:/  if True:/' __main__.py
-  sed -i 's/  for info in zf.infolist():/  if True:/' __main__.py
-  sed -i 's/  zf.extract(info, dest_dir)/  os.system("unzip -qq " + zip_path + " -d " + dest_dir)/' __main__.py
-  sed -i 's/  # UNC-prefixed paths must be absolute\/normalized. See/  return/' __main__.py
+  # macOS sed -i requires '' as backup extension; GNU sed does not.
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    sed -i '' 's/  with zipfile.ZipFile(zip_path) as zf:/  if True:/' __main__.py
+    sed -i '' 's/  for info in zf.infolist():/  if True:/' __main__.py
+    sed -i '' 's/  zf.extract(info, dest_dir)/  os.system("unzip -qq " + zip_path + " -d " + dest_dir)/' __main__.py
+    sed -i '' 's/  # UNC-prefixed paths must be absolute\/normalized. See/  return/' __main__.py
+  else
+    sed -i 's/  with zipfile.ZipFile(zip_path) as zf:/  if True:/' __main__.py
+    sed -i 's/  for info in zf.infolist():/  if True:/' __main__.py
+    sed -i 's/  zf.extract(info, dest_dir)/  os.system("unzip -qq " + zip_path + " -d " + dest_dir)/' __main__.py
+    sed -i 's/  # UNC-prefixed paths must be absolute\/normalized. See/  return/' __main__.py
+  fi
 
   # Step 5: Zip it back up, with zip --symbolic
   rm -f "${BN}.zip"
@@ -108,19 +123,35 @@ TF_CFLAGS=( $(python3 -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.g
 TF_LFLAGS=( $(python3 -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_link_flags()))') )
 
 # shellcheck disable=SC2068
-g++ -std=c++14 -shared \
-        deepvariant/stream_examples_kernel.cc  \
-        deepvariant/stream_examples_ops.cc \
-        -o deepvariant/examples_from_stream.so \
-        -fPIC \
-        -l:libtensorflow_framework.so.2  \
-        -I. \
-        ${TF_CFLAGS[@]} \
-        ${TF_LFLAGS[@]} \
-        -D_GLIBCXX_USE_CXX11_ABI=1 \
-        --std=c++17 \
-        -DEIGEN_MAX_ALIGN_BYTES=64 \
-        -O2
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  # macOS: use clang++, link against libtensorflow_framework.dylib,
+  # no _GLIBCXX_USE_CXX11_ABI (macOS uses libc++, not libstdc++)
+  clang++ -std=c++17 -shared \
+          deepvariant/stream_examples_kernel.cc  \
+          deepvariant/stream_examples_ops.cc \
+          -o deepvariant/examples_from_stream.so \
+          -fPIC \
+          -undefined dynamic_lookup \
+          -I. \
+          ${TF_CFLAGS[@]} \
+          ${TF_LFLAGS[@]} \
+          -DEIGEN_MAX_ALIGN_BYTES=64 \
+          -O2
+else
+  g++ -std=c++14 -shared \
+          deepvariant/stream_examples_kernel.cc  \
+          deepvariant/stream_examples_ops.cc \
+          -o deepvariant/examples_from_stream.so \
+          -fPIC \
+          -l:libtensorflow_framework.so.2  \
+          -I. \
+          ${TF_CFLAGS[@]} \
+          ${TF_LFLAGS[@]} \
+          -D_GLIBCXX_USE_CXX11_ABI=1 \
+          --std=c++17 \
+          -DEIGEN_MAX_ALIGN_BYTES=64 \
+          -O2
+fi
 
 # shellcheck disable=SC2086
 bazel build -c opt \
@@ -175,17 +206,17 @@ bazel build  -c opt \
 # make sure all the builds are done before we fix things.
 
 # TODO: Replace this hand-made list with a find command.
-fix_zip_file "bazel-out/k8-opt/bin/deepvariant/train"
-fix_zip_file "bazel-out/k8-opt/bin/deepvariant/call_variants"
-fix_zip_file "bazel-out/k8-opt/bin/deepvariant/load_gbz_into_shared_memory"
-fix_zip_file "bazel-out/k8-opt/bin/deepvariant/make_examples"
-fix_zip_file "bazel-out/k8-opt/bin/deepvariant/make_examples_pangenome_aware_dv"
-fix_zip_file "bazel-out/k8-opt/bin/deepvariant/make_examples_somatic"
-fix_zip_file "bazel-out/k8-opt/bin/deeptrio/make_examples"
-fix_zip_file "bazel-out/k8-opt/bin/deepvariant/postprocess_variants"
-fix_zip_file "bazel-out/k8-opt/bin/deepvariant/vcf_stats_report"
-fix_zip_file "bazel-out/k8-opt/bin/deepvariant/show_examples"
-fix_zip_file "bazel-out/k8-opt/bin/deepvariant/runtime_by_region_vis"
-fix_zip_file "bazel-out/k8-opt/bin/deepvariant/convert_to_saved_model"
-fix_zip_file "bazel-out/k8-opt/bin/deepvariant/multisample_make_examples"
-fix_zip_file "bazel-out/k8-opt/bin/deepvariant/labeler/labeled_examples_to_vcf"
+fix_zip_file "bazel-bin/deepvariant/train"
+fix_zip_file "bazel-bin/deepvariant/call_variants"
+fix_zip_file "bazel-bin/deepvariant/load_gbz_into_shared_memory"
+fix_zip_file "bazel-bin/deepvariant/make_examples"
+fix_zip_file "bazel-bin/deepvariant/make_examples_pangenome_aware_dv"
+fix_zip_file "bazel-bin/deepvariant/make_examples_somatic"
+fix_zip_file "bazel-bin/deeptrio/make_examples"
+fix_zip_file "bazel-bin/deepvariant/postprocess_variants"
+fix_zip_file "bazel-bin/deepvariant/vcf_stats_report"
+fix_zip_file "bazel-bin/deepvariant/show_examples"
+fix_zip_file "bazel-bin/deepvariant/runtime_by_region_vis"
+fix_zip_file "bazel-bin/deepvariant/convert_to_saved_model"
+fix_zip_file "bazel-bin/deepvariant/multisample_make_examples"
+fix_zip_file "bazel-bin/deepvariant/labeler/labeled_examples_to_vcf"

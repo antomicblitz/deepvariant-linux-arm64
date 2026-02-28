@@ -36,7 +36,17 @@ export DV_USE_PREINSTALLED_TF="${DV_USE_PREINSTALLED_TF:-0}"
 
 export TF_NEED_GCP=1
 
-export CUDNN_INSTALL_PATH="/usr/lib/x86_64-linux-gnu"
+DV_ARCH=$(uname -m)
+DV_OS=$(uname -s)
+
+if [[ "$DV_OS" == "Darwin" ]]; then
+  # macOS — no CUDA/cuDNN, uses tensorflow-metal for GPU
+  unset CUDNN_INSTALL_PATH
+elif [[ "$DV_ARCH" == "x86_64" ]]; then
+  export CUDNN_INSTALL_PATH="/usr/lib/x86_64-linux-gnu"
+elif [[ "$DV_ARCH" == "aarch64" ]]; then
+  export CUDNN_INSTALL_PATH="/usr/lib/aarch64-linux-gnu"
+fi
 
 # The version of bazel we want to build DeepVariant.
 # https://www.tensorflow.org/install/source#tested_build_configurations
@@ -83,7 +93,11 @@ export DV_GPU_BUILD="${DV_GPU_BUILD:-0}"
 
 # NOTE: CPU TensorFlow has a TF_ENABLE_ONEDNN_OPTS option that can be used to
 # enable Intel-specific optimization.
-export GCP_OPTIMIZED_TF_WHL_FILENAME="tensorflow-${DV_GCP_OPTIMIZED_TF_WHL_VERSION}.deepvariant_gcp-cp27-none-linux_x86_64.whl"
+if [[ "$DV_ARCH" == "aarch64" ]]; then
+  export GCP_OPTIMIZED_TF_WHL_FILENAME="tensorflow-${DV_GCP_OPTIMIZED_TF_WHL_VERSION}.deepvariant_gcp-cp27-none-linux_aarch64.whl"
+else
+  export GCP_OPTIMIZED_TF_WHL_FILENAME="tensorflow-${DV_GCP_OPTIMIZED_TF_WHL_VERSION}.deepvariant_gcp-cp27-none-linux_x86_64.whl"
+fi
 export GCP_OPTIMIZED_TF_WHL_PATH="${DV_PACKAGE_BUCKET_PATH}/tensorflow"
 export GCP_OPTIMIZED_TF_WHL_CURL_PATH="${DV_PACKAGE_CURL_PATH}/tensorflow"
 
@@ -94,8 +108,15 @@ export DV_INSTALL_GPU_DRIVERS="${DV_INSTALL_GPU_DRIVERS:-0}"
 
 export PYTHON_VERSION=3.10
 # shellcheck disable=SC2155
-export PYTHON_BIN_PATH="$(which python${PYTHON_VERSION})"
-export PYTHON_LIB_PATH="/usr/local/lib/python${PYTHON_VERSION}/dist-packages"
+if [[ "$DV_OS" == "Darwin" ]]; then
+  # macOS: use Homebrew Python paths
+  export PYTHON_BIN_PATH="$(command -v python${PYTHON_VERSION} || command -v python3)"
+  # Homebrew Python on ARM64 installs to /opt/homebrew
+  export PYTHON_LIB_PATH="$(${PYTHON_BIN_PATH} -c 'import site; print(site.getsitepackages()[0])')"
+else
+  export PYTHON_BIN_PATH="$(which python${PYTHON_VERSION})"
+  export PYTHON_LIB_PATH="/usr/local/lib/python${PYTHON_VERSION}/dist-packages"
+fi
 export USE_DEFAULT_PYTHON_LIB_PATH=1
 # N.B. The --experimental_build_setting_api had to be added on protobuf
 # upgrade to 3.9.2 to avoid error in bazel_skylib:
@@ -104,13 +125,24 @@ export USE_DEFAULT_PYTHON_LIB_PATH=1
 #    --experimental_build_setting_api"
 # Presumably it won't be needed at some later point when bazel_skylib is
 # upgraded again.
-export DV_COPT_FLAGS="--copt=-march=corei7 --copt=-Wno-sign-compare --copt=-Wno-write-strings --experimental_build_setting_api --java_runtime_version=remotejdk_11"
+if [[ "$DV_OS" == "Darwin" ]]; then
+  # macOS: no -march=corei7, Apple Clang compatible flags
+  export DV_COPT_FLAGS="--copt=-Wno-sign-compare --copt=-Wno-write-strings --experimental_build_setting_api --java_runtime_version=remotejdk_11"
+elif [[ "$DV_ARCH" == "x86_64" ]]; then
+  export DV_COPT_FLAGS="--copt=-march=corei7 --copt=-Wno-sign-compare --copt=-Wno-write-strings --experimental_build_setting_api --java_runtime_version=remotejdk_11"
+else
+  export DV_COPT_FLAGS="--copt=-Wno-sign-compare --copt=-Wno-write-strings --experimental_build_setting_api --java_runtime_version=remotejdk_11"
+fi
 
 function note_build_stage {
   echo "========== [$(date)] Stage '${1}' starting"
 }
 
 function wait_for_dpkg_lock {
+  # Linux only: wait for dpkg lock. No-op on macOS.
+  if [[ "$DV_OS" == "Darwin" ]]; then
+    return 0
+  fi
   # Wait for at most 5 minutes.
   echo "Calling wait_for_dpkg_lock."
   max_wait=300

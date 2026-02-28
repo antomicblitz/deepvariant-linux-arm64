@@ -39,6 +39,11 @@ build --define=use_fast_cpp_protos=true
 
 # These are essentially all false positives from our CLIF bindings, we disable
 # them in our own build.
+# Note: -Wno-maybe-uninitialized is GCC-only; Apple Clang uses
+# -Wno-uninitialized instead. We conditionally set this at build time.
+# On macOS (Apple Clang), -Wno-maybe-uninitialized is not recognized but
+# -Wno-unknown-warning-option prevents it from being a hard error.
+build --copt="-Wno-unknown-warning-option"
 build --copt="-Wno-maybe-uninitialized"
 build --copt="-Wno-unused-function"
 
@@ -65,3 +70,10 @@ test --test_output=errors
 #    temporarily revert to the legacy flag-based way of specifying toolchains by
 #    setting `--incompatible_use_python_toolchains=false`."
 build --python_top=//:deepvariant_python_runtime --incompatible_use_python_toolchains=false
+
+# macOS ARM64: use the macos_arm64 config from TF which sets --cpu=darwin_arm64
+# and --macos_minimum_os=11.0 (prevents defaulting to the ancient macosx10.10 SDK)
+build:macos --config=macos_arm64
+# Boost 1.90+: force v1 process API (makes boost::process::v1 an inline namespace
+# so boost::process::child etc. resolve correctly)
+build:macos --copt=-DBOOST_PROCESS_VERSION=1

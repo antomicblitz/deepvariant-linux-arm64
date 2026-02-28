@@ -285,7 +285,7 @@ std::string ExamplesGenerator::CreateHaplotype(const Variant& variant,
   int64_t var_end = var_start + ref_bases.size();
 
   std::string prefix = "";
-  int64_t ref_start = std::max(var_start - half_width_, 0L);
+  int64_t ref_start = std::max(var_start - half_width_, static_cast<int64_t>(0));
   if (ref_start < var_start) {
     prefix =
         ref_reader_->GetBases(

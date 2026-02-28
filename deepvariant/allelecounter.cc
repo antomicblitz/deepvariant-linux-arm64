@@ -307,7 +307,7 @@ void AlleleCounter::Init() {
   auto full_interval_offset = interval_.start() - reads_interval_.start();
   // If interval_ starts before reads_interval_ start then we don't need to
   // offset reference bases.
-  full_interval_offset = std::max(full_interval_offset, 0L);
+  full_interval_offset = std::max(full_interval_offset, static_cast<int64_t>(0));
   for (int i = 0; i < len; ++i) {
     AlleleCount allele_count;
     const int64_t pos = interval_.start() + i;

@@ -48,19 +48,33 @@ TF_CFLAGS=( $(python3 -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.g
 TF_LFLAGS=( $(python3 -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_link_flags()))') )
 
 # shellcheck disable=SC2068
-g++ -std=c++14 -shared \
-        deepvariant/stream_examples_kernel.cc  \
-        deepvariant/stream_examples_ops.cc \
-        -o deepvariant/examples_from_stream.so \
-        -fPIC \
-        -l:libtensorflow_framework.so.2  \
-        -I. \
-        ${TF_CFLAGS[@]} \
-        ${TF_LFLAGS[@]} \
-        -D_GLIBCXX_USE_CXX11_ABI=1 \
-        --std=c++17 \
-        -DEIGEN_MAX_ALIGN_BYTES=64 \
-        -O2
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  clang++ -std=c++17 -shared \
+          deepvariant/stream_examples_kernel.cc  \
+          deepvariant/stream_examples_ops.cc \
+          -o deepvariant/examples_from_stream.so \
+          -fPIC \
+          -undefined dynamic_lookup \
+          -I. \
+          ${TF_CFLAGS[@]} \
+          ${TF_LFLAGS[@]} \
+          -DEIGEN_MAX_ALIGN_BYTES=64 \
+          -O2
+else
+  g++ -std=c++14 -shared \
+          deepvariant/stream_examples_kernel.cc  \
+          deepvariant/stream_examples_ops.cc \
+          -o deepvariant/examples_from_stream.so \
+          -fPIC \
+          -l:libtensorflow_framework.so.2  \
+          -I. \
+          ${TF_CFLAGS[@]} \
+          ${TF_LFLAGS[@]} \
+          -D_GLIBCXX_USE_CXX11_ABI=1 \
+          --std=c++17 \
+          -DEIGEN_MAX_ALIGN_BYTES=64 \
+          -O2
+fi
 
 # Run all deepvariant tests.  Take bazel options from args, if any.
 # Note: If running with GPU, tests must be executed serially due to a GPU
@@ -83,5 +97,5 @@ fi
 ./build_release_binaries.sh
 
 echo 'Expect a usage message:'
-(python3 bazel-out/k8-opt/bin/deepvariant/call_variants.zip --help || : ) | grep '/call_variants.py:'
+(python3 bazel-bin/deepvariant/call_variants.zip --help || : ) | grep '/call_variants.py:'
 

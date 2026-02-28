@@ -211,7 +211,10 @@ genrule(
     cmd = """
         exec > "$@"
         echo '#define HAVE_DRAND48 1'
-        echo '#define HAVE_FDATASYNC 1'
+        OS=$$(uname -s)
+        if [ "$$OS" != "Darwin" ]; then
+            echo '#define HAVE_FDATASYNC 1'
+        fi
         echo '#define HAVE_FSYNC 1'
         echo '#define HAVE_GETPAGESIZE 1'
         echo '#define HAVE_GMTIME_R 1'
@@ -221,9 +224,12 @@ genrule(
         echo '#define HAVE_LIBZ 1'
         echo '#define HAVE_MEMORY_H 1'
         echo '#define HAVE_MMAP 1'
-        echo '#define HAVE_POPCNT 1'
-        echo '#define HAVE_SSE4_1 1'
-        echo '#define HAVE_SSSE3 1'
+        MACHINE=$$(uname -m)
+        if [ "$$MACHINE" = "x86_64" ]; then
+            echo '#define HAVE_POPCNT 1'
+            echo '#define HAVE_SSE4_1 1'
+            echo '#define HAVE_SSSE3 1'
+        fi
         echo '#define HAVE_STDINT_H 1'
         echo '#define HAVE_STDLIB_H 1'
         echo '#define HAVE_STRING_H 1'
@@ -232,7 +238,9 @@ genrule(
         echo '#define HAVE_SYS_STAT_H 1'
         echo '#define HAVE_SYS_TYPES_H 1'
         echo '#define HAVE_UNISTD_H 1'
-        echo '#define _XOPEN_SOURCE 600'
+        if [ "$$OS" != "Darwin" ]; then
+            echo '#define _XOPEN_SOURCE 600'
+        fi
         echo '#define UBSAN 1'
         echo '#define PACKAGE_BUGREPORT "samtools-help@lists.sourceforge.net"'
         echo '#define PACKAGE_NAME "HTSlib"'
@@ -240,7 +248,11 @@ genrule(
         echo '#define PACKAGE_TARNAME "htslib"'
         echo '#define PACKAGE_URL "http://www.htslib.org/"'
         echo '#define PACKAGE_VERSION "%s"'
-        echo '#define PLUGIN_EXT ".so"'
+        if [ "$$OS" = "Darwin" ]; then
+            echo '#define PLUGIN_EXT ".dylib"'
+        else
+            echo '#define PLUGIN_EXT ".so"'
+        fi
         echo '#define STDC_HEADERS 1'
     """ % (version, version),
 )

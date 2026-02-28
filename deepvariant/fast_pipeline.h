@@ -40,7 +40,7 @@
 #include "absl/types/span.h"
 #include "boost/interprocess/shared_memory_object.hpp"  // NOLINT
 #include "boost/interprocess/sync/named_mutex.hpp" // NOLINT
-#include "boost/process.hpp" // NOLINT
+#include "boost/process/v1.hpp" // NOLINT
 
 namespace learning {
 namespace genomics {

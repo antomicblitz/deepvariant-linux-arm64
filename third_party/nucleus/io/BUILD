@@ -656,6 +656,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
+        "@boost//:boost",
         "@gbwt",
         "@gbwtgraph",
         "@libhandlegraph",

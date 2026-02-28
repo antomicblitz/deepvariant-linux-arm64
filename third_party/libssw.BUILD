@@ -11,7 +11,7 @@ exports_files(["README.md"])
 cc_library(
     name = "ssw",
     srcs = ["src/ssw.c"],
-    hdrs = ["src/ssw.h"],
+    hdrs = ["src/ssw.h"] + glob(["src/sse2neon.h"]),
 )
 
 cc_binary(

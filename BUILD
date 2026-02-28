@@ -105,6 +105,6 @@ py_runtime(
     name = "deepvariant_python_runtime",
     files = [],
     interpreter_path = select({
-        "@bazel_tools//tools/python:PY3": "/usr/bin/python3",
+        "@bazel_tools//tools/python:PY3": "/opt/homebrew/bin/python3.10",
     }),
 )

@@ -65,6 +65,15 @@ function ensure_wanted_bazel_version {
   rm -rf ~/bazel
   mkdir ~/bazel
 
+  local ARCH
+  ARCH=$(uname -m)
+  local BAZEL_ARCH
+  if [[ "$ARCH" == "aarch64" ]]; then
+    BAZEL_ARCH="arm64"
+  else
+    BAZEL_ARCH="x86_64"
+  fi
+
   if
     v=$(bazel --bazelrc=/dev/null --ignore_all_rc_files version) &&
     echo "$v" | awk -v b="$wanted_bazel_version" '/Build label/ { exit ($3 != b)}'
@@ -72,10 +81,10 @@ function ensure_wanted_bazel_version {
     echo "Bazel ${wanted_bazel_version} already installed on the machine, not reinstalling"
   else
     pushd ~/bazel
-    curl -L -O https://github.com/bazelbuild/bazel/releases/download/"${wanted_bazel_version}"/bazel-"${wanted_bazel_version}"-installer-linux-x86_64.sh
+    curl -L -O https://github.com/bazelbuild/bazel/releases/download/"${wanted_bazel_version}"/bazel-"${wanted_bazel_version}"-installer-linux-"${BAZEL_ARCH}".sh
     chmod +x bazel-*.sh
-    ./bazel-"${wanted_bazel_version}"-installer-linux-x86_64.sh --user > /dev/null
-    rm bazel-"${wanted_bazel_version}"-installer-linux-x86_64.sh
+    ./bazel-"${wanted_bazel_version}"-installer-linux-"${BAZEL_ARCH}".sh --user > /dev/null
+    rm bazel-"${wanted_bazel_version}"-installer-linux-"${BAZEL_ARCH}".sh
     popd
   fi
 }

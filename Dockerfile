@@ -21,8 +21,8 @@ ARG TF_ENABLE_ONEDNN_OPTS=1
 FROM condaforge/miniforge3:24.9.2-0 as conda_setup
 RUN conda config --add channels bioconda
 RUN conda create -n bio \
-                    bioconda::bcftools=1.15 \
-                    bioconda::samtools=1.15 \
+                    bioconda::bcftools=1.22 \
+                    bioconda::samtools=1.22 \
     && conda clean -a
 
 FROM ${FROM_IMAGE} as builder
@@ -67,18 +67,18 @@ WORKDIR /opt/deepvariant/bin/
 COPY --from=builder /opt/conda /opt/conda
 COPY --from=builder /opt/deepvariant/run-prereq.sh .
 COPY --from=builder /opt/deepvariant/settings.sh .
-COPY --from=builder /opt/deepvariant/bazel-out/k8-opt/bin/deepvariant/make_examples.zip  .
-COPY --from=builder /opt/deepvariant/bazel-out/k8-opt/bin/deepvariant/call_variants.zip  .
-COPY --from=builder /opt/deepvariant/bazel-out/k8-opt/bin/deepvariant/postprocess_variants.zip  .
-COPY --from=builder /opt/deepvariant/bazel-out/k8-opt/bin/deepvariant/vcf_stats_report.zip  .
-COPY --from=builder /opt/deepvariant/bazel-out/k8-opt/bin/deepvariant/show_examples.zip  .
-COPY --from=builder /opt/deepvariant/bazel-out/k8-opt/bin/deepvariant/runtime_by_region_vis.zip  .
-COPY --from=builder /opt/deepvariant/bazel-out/k8-opt/bin/deepvariant/multisample_make_examples.zip  .
-COPY --from=builder /opt/deepvariant/bazel-out/k8-opt/bin/deepvariant/labeler/labeled_examples_to_vcf.zip  .
-COPY --from=builder /opt/deepvariant/bazel-out/k8-opt/bin/deepvariant/convert_to_saved_model.zip  .
-COPY --from=builder /opt/deepvariant/bazel-out/k8-opt/bin/deepvariant/make_examples_somatic.zip  .
-COPY --from=builder /opt/deepvariant/bazel-out/k8-opt/bin/deepvariant/train.zip  .
-COPY --from=builder /opt/deepvariant/bazel-out/k8-opt/bin/deepvariant/fast_pipeline .
+COPY --from=builder /opt/deepvariant/bazel-bin/deepvariant/make_examples.zip  .
+COPY --from=builder /opt/deepvariant/bazel-bin/deepvariant/call_variants.zip  .
+COPY --from=builder /opt/deepvariant/bazel-bin/deepvariant/postprocess_variants.zip  .
+COPY --from=builder /opt/deepvariant/bazel-bin/deepvariant/vcf_stats_report.zip  .
+COPY --from=builder /opt/deepvariant/bazel-bin/deepvariant/show_examples.zip  .
+COPY --from=builder /opt/deepvariant/bazel-bin/deepvariant/runtime_by_region_vis.zip  .
+COPY --from=builder /opt/deepvariant/bazel-bin/deepvariant/multisample_make_examples.zip  .
+COPY --from=builder /opt/deepvariant/bazel-bin/deepvariant/labeler/labeled_examples_to_vcf.zip  .
+COPY --from=builder /opt/deepvariant/bazel-bin/deepvariant/convert_to_saved_model.zip  .
+COPY --from=builder /opt/deepvariant/bazel-bin/deepvariant/make_examples_somatic.zip  .
+COPY --from=builder /opt/deepvariant/bazel-bin/deepvariant/train.zip  .
+COPY --from=builder /opt/deepvariant/bazel-bin/deepvariant/fast_pipeline .
 COPY --from=builder /opt/deepvariant/scripts/run_deepvariant.py .
 
 RUN ./run-prereq.sh

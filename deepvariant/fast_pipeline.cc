@@ -54,8 +54,8 @@
 #include "boost/interprocess/sync/interprocess_semaphore.hpp" // NOLINT
 #include "boost/interprocess/sync/named_mutex.hpp" // NOLINT
 #include "boost/interprocess/sync/scoped_lock.hpp" // NOLINT
-#include "boost/process.hpp" // NOLINT
-#include "boost/process/search_path.hpp" // NOLINT
+#include "boost/process/v1.hpp" // NOLINT
+#include "boost/process/v1/search_path.hpp" // NOLINT
 
 ABSL_FLAG(std::string, make_example_flags, "",
           "file containing make_examples flags");

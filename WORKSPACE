@@ -183,8 +183,20 @@ load("@org_tensorflow//tensorflow:workspace0.bzl", "tf_workspace0")
 
 tf_workspace0()
 
+# CLIF C++ runtime path.
+# macOS ARM64 (Homebrew): /opt/homebrew (installed by build-prereq-macos.sh)
+# Linux: /usr/local (installed by build-prereq.sh)
 new_local_repository(
     name = "clif",
     build_file = "third_party/clif.BUILD",
-    path = "/usr/local",
+    path = "/opt/homebrew",
+)
+
+# Boost headers (for interprocess shared memory in fast_pipeline).
+# macOS ARM64 (Homebrew): /opt/homebrew
+# Linux: /usr (system headers)
+new_local_repository(
+    name = "boost",
+    build_file = "third_party/boost.BUILD",
+    path = "/opt/homebrew",
 )

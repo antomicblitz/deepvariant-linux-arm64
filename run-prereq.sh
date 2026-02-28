@@ -152,7 +152,14 @@ pip3 install "${PIP_ARGS[@]}" 'scikit-learn==1.0.2'
 pip3 install "${PIP_ARGS[@]}" 'setuptools==61.0.0'
 # This is to avoid ERROR: No matching distribution found for opencv-python-headless==4.5.2.52.
 # TODO: Make this the same as ${DV_GCP_OPTIMIZED_TF_WHL_VERSION}" later
-pip3 install "${PIP_ARGS[@]}"  "tf-models-official==2.13.1"
+# Install tf-models-official without deps to avoid pulling tensorflow-text,
+# which has no ARM64 wheels for version 2.13.x. DeepVariant only uses
+# official.modeling.optimization, which does not require tensorflow-text.
+pip3 install "${PIP_ARGS[@]}" --no-deps "tf-models-official==2.13.1"
+# Install the tf-models-official dependencies that DeepVariant actually needs
+# (everything except tensorflow-text and tensorflow-hub which also lack ARM64 wheels).
+pip3 install "${PIP_ARGS[@]}" tensorflow-datasets gin-config seqeval \
+  'opencv-python-headless>=4.5' tf-slim sacrebleu pyyaml
 
 ################################################################################
 # TensorFlow

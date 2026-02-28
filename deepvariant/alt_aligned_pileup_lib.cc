@@ -103,18 +103,18 @@ void TrimCigar(const ::google::protobuf::RepeatedPtrField<CigarUnit>& cigar,
     // Each operation moves forward in the ref, the read, or both.
     bool advances_ref = IsOperationRefAdvancing(cigar_unit);
     bool advances_read = IsOperationReadAdvancing(cigar_unit);
-    int64_t ref_step = advances_ref ? c_operation_length : 0L;
+    int64_t ref_step = advances_ref ? c_operation_length : INT64_C(0);
     // First, use up each operation until the trimmed area is covered.
     if (trim_remaining > 0) {
       if (ref_step <= trim_remaining) {
         // Fully apply to the trim.
         trim_remaining -= ref_step;
-        read_start += (advances_read ? c_operation_length : 0L);
+        read_start += (advances_read ? c_operation_length : INT64_C(0));
         continue;
       } else {
         // Partially apply to finish the trim.
         ref_step -= trim_remaining;
-        read_start += (advances_read ? trim_remaining : 0L);
+        read_start += (advances_read ? trim_remaining : INT64_C(0));
         // If trim finishes here, the rest of the ref_step can apply to the
         // next stage and count towards covering the given ref window.
         c_operation_length = ref_step;
@@ -131,14 +131,14 @@ void TrimCigar(const ::google::protobuf::RepeatedPtrField<CigarUnit>& cigar,
         new_cigar_unit->set_operation(cigar_unit.operation());
         new_cigar_unit->set_operation_length(c_operation_length);
         ref_to_cover_remaining -= ref_step;
-        new_read_length += (advances_read ? c_operation_length : 0L);
+        new_read_length += (advances_read ? c_operation_length : INT64_C(0));
       } else {
         // Partially apply to finish the window.
         c_operation_length = ref_to_cover_remaining;
         auto new_cigar_unit = new_cigar->Add();
         new_cigar_unit->set_operation(cigar_unit.operation());
         new_cigar_unit->set_operation_length(c_operation_length);
-        new_read_length += (advances_read ? c_operation_length : 0L);
+        new_read_length += (advances_read ? c_operation_length : INT64_C(0));
         ref_to_cover_remaining = 0;
         break;
       }
@@ -149,7 +149,7 @@ void TrimCigar(const ::google::protobuf::RepeatedPtrField<CigarUnit>& cigar,
 Read TrimRead(const Read& read, const Range& region) {
   int64_t read_start = read.alignment().position().position();
   // Ref position where trimmed read should start.
-  int64_t trim_left = std::max(region.start() - read_start, 0L);
+  int64_t trim_left = std::max(region.start() - read_start, static_cast<int64_t>(0));
   // Ref length of the trimmed read.
   int64_t ref_length = region.end() - std::max(region.start(), read_start);
   CHECK_GT(ref_length, 0);
@@ -231,7 +231,7 @@ Range CalculateAlignmentRegion(const Variant& variant, int half_width,
   int64_t n_ref_bases = variant.reference_bases().size();
   int64_t ref_end = ref_start + n_ref_bases;
   alignment_region.set_reference_name(variant.reference_name());
-  alignment_region.set_start(std::max(variant.start() - half_width, 0L));
+  alignment_region.set_start(std::max(variant.start() - half_width, static_cast<int64_t>(0)));
   alignment_region.set_end(std::min(
       ref_reader.Contig(variant.reference_name()).ValueOrDie()->n_bases(),
       ref_end + half_width));
@@ -296,7 +296,7 @@ std::vector<Read> RealignReadsToHaplotype(
   realigner.set_options(aln_config);
   // Both reference and haplotype are padded with typically 20 bases from the
   // reference.
-  int64_t ref_start_ext = std::max(0L, ref_start - kRefAlignMargin);
+  int64_t ref_start_ext = std::max(static_cast<int64_t>(0), ref_start - kRefAlignMargin);
   int64_t ref_end_ext =
       std::min(ref_reader.Contig(std::string(contig)).ValueOrDie()->n_bases(),
                ref_end + kRefAlignMargin);

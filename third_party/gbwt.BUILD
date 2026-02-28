@@ -40,6 +40,7 @@ cc_library(
     includes = includes,
     visibility = ["//visibility:public"],
     deps = [
+        "@boost//:boost",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:absl_log",
         "@sdsl_lite",

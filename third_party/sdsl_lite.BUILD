@@ -18,7 +18,6 @@ include_sdsl_lite = "include"
 
 includes = [
     include_sdsl_lite,
-    ".",
 ]
 
 LIBRARY_COPTS = [

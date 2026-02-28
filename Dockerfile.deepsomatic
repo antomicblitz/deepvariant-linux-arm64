@@ -23,8 +23,8 @@ RUN conda config --add channels defaults && \
     conda config --add channels bioconda && \
     conda config --add channels conda-forge
 RUN conda create -n bio \
-                    bioconda::bcftools=1.15 \
-                    bioconda::samtools=1.15 \
+                    bioconda::bcftools=1.22 \
+                    bioconda::samtools=1.22 \
     && conda clean -a
 
 FROM ${FROM_IMAGE} as builder
@@ -59,12 +59,12 @@ WORKDIR /opt/deepvariant/bin/
 COPY --from=builder /opt/conda /opt/conda
 COPY --from=builder /opt/deepvariant/run-prereq.sh .
 COPY --from=builder /opt/deepvariant/settings.sh .
-COPY --from=builder /opt/deepvariant/bazel-out/k8-opt/bin/deepvariant/make_examples_somatic.zip  .
-COPY --from=builder /opt/deepvariant/bazel-out/k8-opt/bin/deepvariant/call_variants.zip  .
-COPY --from=builder /opt/deepvariant/bazel-out/k8-opt/bin/deepvariant/postprocess_variants.zip  .
-COPY --from=builder /opt/deepvariant/bazel-out/k8-opt/bin/deepvariant/vcf_stats_report.zip  .
-COPY --from=builder /opt/deepvariant/bazel-out/k8-opt/bin/deepvariant/show_examples.zip  .
-COPY --from=builder /opt/deepvariant/bazel-out/k8-opt/bin/deepvariant/runtime_by_region_vis.zip  .
+COPY --from=builder /opt/deepvariant/bazel-bin/deepvariant/make_examples_somatic.zip  .
+COPY --from=builder /opt/deepvariant/bazel-bin/deepvariant/call_variants.zip  .
+COPY --from=builder /opt/deepvariant/bazel-bin/deepvariant/postprocess_variants.zip  .
+COPY --from=builder /opt/deepvariant/bazel-bin/deepvariant/vcf_stats_report.zip  .
+COPY --from=builder /opt/deepvariant/bazel-bin/deepvariant/show_examples.zip  .
+COPY --from=builder /opt/deepvariant/bazel-bin/deepvariant/runtime_by_region_vis.zip  .
 COPY --from=builder /opt/deepvariant/scripts/run_deepsomatic.py ./deepsomatic/
 RUN ./run-prereq.sh
 
