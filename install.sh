@@ -506,7 +506,7 @@ fi
 if [[ "$VERIFY_OK" == true ]]; then
   export DEEPVARIANT_HOME
 
-  if python3 "${DEEPVARIANT_HOME}/bin/make_examples.zip" --help &>/dev/null; then
+  if python3 "${DEEPVARIANT_HOME}/bin/make_examples.zip" --help 2>&1 | grep -q "creates tf.Example protos"; then
     echo "  make_examples: OK"
   else
     echo "  make_examples: FAILED (may need tensorflow-macos installed)"
