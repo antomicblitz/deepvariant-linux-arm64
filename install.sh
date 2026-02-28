@@ -259,7 +259,7 @@ install_pip_packages() {
   pip_q 'clu==0.0.9'
   pip_q 'protobuf==4.21.9'
   pip_q 'requests>=2.18'
-  pip_q joblib psutil
+  pip_q joblib psutil ipython
   pip_q 'pandas==1.3.4'
   pip_q 'Pillow==9.5.0'
   pip_q 'pysam==0.20.0'
