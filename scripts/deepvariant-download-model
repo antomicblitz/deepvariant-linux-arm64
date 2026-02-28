@@ -48,27 +48,62 @@ if [[ " ${MODELS[*]} " == *" ALL "* ]]; then
   fi
 fi
 
-# Map model types to GCS URL slugs
-declare -A DV_SLUG_MAP=(
-  [WGS]=wgs [WES]=wes [PACBIO]=pacbio
-  [ONT_R104]=ont [HYBRID]=hybrid [MASSEQ]=masseq
-)
-declare -A DV_DIR_MAP=(
-  [WGS]=wgs [WES]=wes [PACBIO]=pacbio
-  [ONT_R104]=ont_r104 [HYBRID]=hybrid_pacbio_illumina [MASSEQ]=masseq
-)
-# Small models are only available for these types
-DV_SMALL_MODEL_TYPES="WGS PACBIO ONT_R104"
+# Bash 3.2-compatible lookup functions (replaces declare -A which requires bash 4+)
+# macOS ships with bash 3.2; using case statements avoids the associative array issue.
 
-declare -A DT_SLUG_MAP=(
-  [WGS]=wgs [WES]=wes [PACBIO]=pacbio [ONT]=ont
-)
-DT_SMALL_MODEL_TYPES="WGS PACBIO ONT"
+dv_slug() {
+  case "$1" in
+    WGS)     echo "wgs" ;;
+    WES)     echo "wes" ;;
+    PACBIO)  echo "pacbio" ;;
+    ONT_R104) echo "ont" ;;
+    HYBRID)  echo "hybrid" ;;
+    MASSEQ)  echo "masseq" ;;
+    *)       echo "" ;;
+  esac
+}
+
+dv_dir() {
+  case "$1" in
+    WGS)     echo "wgs" ;;
+    WES)     echo "wes" ;;
+    PACBIO)  echo "pacbio" ;;
+    ONT_R104) echo "ont_r104" ;;
+    HYBRID)  echo "hybrid_pacbio_illumina" ;;
+    MASSEQ)  echo "masseq" ;;
+    *)       echo "" ;;
+  esac
+}
+
+dt_slug() {
+  case "$1" in
+    WGS)    echo "wgs" ;;
+    WES)    echo "wes" ;;
+    PACBIO) echo "pacbio" ;;
+    ONT)    echo "ont" ;;
+    *)      echo "" ;;
+  esac
+}
+
+# Returns 0 (true) if the DeepVariant model type has a small model available
+dv_has_small_model() {
+  case "$1" in
+    WGS|PACBIO|ONT_R104) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Returns 0 (true) if the DeepTrio model type has a small model available
+dt_has_small_model() {
+  case "$1" in
+    WGS|PACBIO|ONT) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 
 download_saved_model() {
   local base_url=$1
   local dest=$2
-  local files=("$@")
 
   mkdir -p "${dest}/variables"
 
@@ -106,7 +141,7 @@ GCS_BASE="https://storage.googleapis.com/deepvariant/models"
 
 for model_type in "${MODELS[@]}"; do
   if [[ "$DEEPTRIO" == true ]]; then
-    slug="${DT_SLUG_MAP[$model_type]:-}"
+    slug="$(dt_slug "$model_type")"
     if [[ -z "$slug" ]]; then
       echo "ERROR: Unknown DeepTrio model type: ${model_type}"
       echo "  Valid types: WGS, WES, PACBIO, ONT"
@@ -126,7 +161,7 @@ for model_type in "${MODELS[@]}"; do
       "${DEEPVARIANT_HOME}/models/deeptrio/${slug}/parent"
 
     # Small models (if available for this type)
-    if [[ " ${DT_SMALL_MODEL_TYPES} " == *" ${model_type} "* ]]; then
+    if dt_has_small_model "$model_type"; then
       download_small_model \
         "${GCS_BASE}/DeepTrio/${VERSION}/smallmodels/deeptrio.${slug}_child.smallmodel" \
         "${DEEPVARIANT_HOME}/smallmodels/deeptrio/${slug}/child"
@@ -136,8 +171,8 @@ for model_type in "${MODELS[@]}"; do
     fi
 
   else
-    slug="${DV_SLUG_MAP[$model_type]:-}"
-    dir_name="${DV_DIR_MAP[$model_type]:-}"
+    slug="$(dv_slug "$model_type")"
+    dir_name="$(dv_dir "$model_type")"
     if [[ -z "$slug" ]]; then
       echo "ERROR: Unknown DeepVariant model type: ${model_type}"
       echo "  Valid types: WGS, WES, PACBIO, ONT_R104, HYBRID, MASSEQ"
@@ -150,7 +185,7 @@ for model_type in "${MODELS[@]}"; do
       "${DEEPVARIANT_HOME}/models/${dir_name}"
 
     # Small model (if available for this type)
-    if [[ " ${DV_SMALL_MODEL_TYPES} " == *" ${model_type} "* ]]; then
+    if dv_has_small_model "$model_type"; then
       download_small_model \
         "${GCS_BASE}/DeepVariant/${VERSION}/smallmodels/deepvariant.${slug}.smallmodel" \
         "${DEEPVARIANT_HOME}/smallmodels/${dir_name}"
