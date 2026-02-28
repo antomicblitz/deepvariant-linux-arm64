@@ -114,6 +114,7 @@ echo "Copying runner scripts..."
 cp scripts/run_deepvariant.py "${STAGING_DIR}/scripts/"
 cp scripts/run_deeptrio.py "${STAGING_DIR}/scripts/"
 cp scripts/uninstall.sh "${STAGING_DIR}/scripts/"
+cp scripts/quicktest.sh "${STAGING_DIR}/scripts/"
 
 echo "Copying licenses..."
 if [[ -f "bazel-bin/licenses.zip" ]]; then

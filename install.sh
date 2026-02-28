@@ -422,6 +422,17 @@ else
 fi
 chmod +x "${DEEPVARIANT_HOME}/scripts/uninstall.sh"
 
+# Copy quicktest script
+QUICKTEST_SRC="$(cd "$(dirname "$0")" && pwd)/scripts/quicktest.sh"
+if [[ -f "${QUICKTEST_SRC}" ]]; then
+  cp "${QUICKTEST_SRC}" "${DEEPVARIANT_HOME}/scripts/quicktest.sh"
+else
+  # Download from GitHub if running via curl pipe
+  curl -fsSL "https://raw.githubusercontent.com/antomicblitz/deepvariant-macos-arm64-metal/r1.9/scripts/quicktest.sh" \
+    -o "${DEEPVARIANT_HOME}/scripts/quicktest.sh"
+fi
+chmod +x "${DEEPVARIANT_HOME}/scripts/quicktest.sh"
+
 # Create uninstall wrapper in bin/
 cat > "${DEEPVARIANT_HOME}/bin/deepvariant-uninstall" << 'WRAPPER'
 #!/bin/bash
@@ -430,7 +441,15 @@ exec "${DV_HOME}/scripts/uninstall.sh" "$@"
 WRAPPER
 chmod +x "${DEEPVARIANT_HOME}/bin/deepvariant-uninstall"
 
-echo "  Created: run_deepvariant, run_deeptrio, deepvariant-download-model, deepvariant-uninstall"
+# Create quicktest wrapper in bin/
+cat > "${DEEPVARIANT_HOME}/bin/deepvariant-quicktest" << 'WRAPPER'
+#!/bin/bash
+DV_HOME="${DEEPVARIANT_HOME:-$HOME/.deepvariant}"
+exec "${DV_HOME}/scripts/quicktest.sh" "$@"
+WRAPPER
+chmod +x "${DEEPVARIANT_HOME}/bin/deepvariant-quicktest"
+
+echo "  Created: run_deepvariant, run_deeptrio, deepvariant-download-model, deepvariant-uninstall, deepvariant-quicktest"
 
 ################################################################################
 # Download models
@@ -516,7 +535,11 @@ fi
 if [[ "$VERIFY_OK" == true ]]; then
   export DEEPVARIANT_HOME
 
-  if python3 "${DEEPVARIANT_HOME}/bin/make_examples.zip" --help 2>&1 | grep -q "creates tf.Example protos"; then
+  # Capture help output separately — absl-py exits non-zero on --help
+  # (mark_flag_as_required warning) and pipefail would propagate that
+  # exit code through the pipeline, making grep's success irrelevant.
+  ME_HELP=$(python3 "${DEEPVARIANT_HOME}/bin/make_examples.zip" --help 2>&1 || true)
+  if echo "$ME_HELP" | grep -q "creates tf.Example protos"; then
     echo "  make_examples: OK"
   else
     echo "  make_examples: FAILED (may need tensorflow-macos installed)"
