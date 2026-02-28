@@ -23,15 +23,45 @@ Install pre-built binaries with a single command. No build tools required.
 ### Prerequisites
 
 - **macOS** on Apple Silicon (M1/M2/M3/M4)
-- **Python 3.10** — `brew install python@3.10`
+- **Python 3.10** — via one of:
+  - `brew install python@3.10`, or
+  - conda/mamba/micromamba (the installer will create a conda env with Python 3.10 automatically)
 
 ### One-line Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/antomicblitz/deepvariant-osx_arm64/r1.9/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/antomicblitz/deepvariant-macos-arm64-metal/r1.9/install.sh | bash
 ```
 
-This downloads pre-built binaries, creates a Python venv with Metal GPU support, and downloads the WGS model. Customize with environment variables:
+This downloads pre-built binaries, sets up a Python environment with Metal GPU support, and downloads the WGS model. The installer auto-detects your setup:
+
+- If **Python 3.10** is found, it creates a **venv** (lightweight, no extra tools)
+- If Python 3.10 is missing but **conda/mamba** is found, it creates a **conda env** (also installs Python 3.10 and GNU parallel for you)
+
+### Conda Install (Recommended)
+
+If you have conda, mamba, or micromamba installed, you can explicitly use conda:
+
+```bash
+USE_CONDA=1 curl -fsSL https://raw.githubusercontent.com/antomicblitz/deepvariant-macos-arm64-metal/r1.9/install.sh | bash
+```
+
+This creates a `deepvariant` conda environment with Python 3.10, GNU parallel, and all dependencies. No need to install Python 3.10 separately.
+
+Alternatively, create the environment manually from the included `environment.yml`:
+
+```bash
+git clone https://github.com/antomicblitz/deepvariant-macos-arm64-metal.git
+cd deepvariant-macos-arm64-metal
+conda env create -f environment.yml
+conda activate deepvariant
+# Then install --no-deps packages:
+pip install --no-deps tensorflow-hub==0.14.0 tensorflow-model-optimization==0.7.5 tf-models-official==2.13.1
+```
+
+### Environment Variables
+
+Customize the install with environment variables:
 
 ```bash
 # Install to a custom location
@@ -40,11 +70,20 @@ DEEPVARIANT_HOME=/path/to/dir curl -fsSL ... | bash
 # Download specific models (WGS WES PACBIO ONT_R104 HYBRID MASSEQ ALL NONE)
 MODEL_TYPES="WGS WES PACBIO" curl -fsSL ... | bash
 
-# Skip venv creation (if you have your own)
-SKIP_VENV=1 curl -fsSL ... | bash
+# Force conda or venv
+USE_CONDA=1 curl -fsSL ... | bash
+USE_CONDA=0 curl -fsSL ... | bash   # force venv, fail if no Python 3.10
+
+# Custom conda env name (default: deepvariant)
+CONDA_ENV_NAME=dv19 USE_CONDA=1 curl -fsSL ... | bash
+
+# Skip environment creation entirely (if you manage your own)
+SKIP_ENV=1 curl -fsSL ... | bash
 ```
 
-After installation, open a new terminal and run:
+### After Installation
+
+Open a new terminal and run:
 
 ```bash
 run_deepvariant \
@@ -61,6 +100,16 @@ Download additional models any time:
 deepvariant-download-model WES PACBIO ONT_R104
 deepvariant-download-model WGS --deeptrio
 ```
+
+### Quicktest
+
+Verify your installation with a small end-to-end test (requires GNU parallel):
+
+```bash
+$DEEPVARIANT_HOME/scripts/quicktest.sh
+```
+
+This runs all three DeepVariant steps on a 10kb region of chr20, confirms Metal GPU detection, and produces a VCF output.
 
 ---
 
@@ -79,8 +128,8 @@ If you prefer to build from source instead of using pre-built binaries:
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/antomicblitz/deepvariant-osx_arm64.git
-cd deepvariant-osx_arm64
+git clone https://github.com/antomicblitz/deepvariant-macos-arm64-metal.git
+cd deepvariant-macos-arm64-metal
 git checkout r1.9
 ```
 

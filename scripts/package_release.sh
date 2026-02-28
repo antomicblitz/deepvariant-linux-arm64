@@ -152,7 +152,7 @@ Pre-built native binaries for Apple Silicon (M1/M2/M3/M4).
 ## Quick Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/antomicblitz/deepvariant-osx_arm64/r1.9/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/antomicblitz/deepvariant-macos-arm64-metal/r1.9/install.sh | bash
 ```
 
 ## What's Included
@@ -174,14 +174,14 @@ NOTES
 
   gh release create "v${VERSION}" \
     "${TARBALL}" \
-    --repo antomicblitz/deepvariant-osx_arm64 \
+    --repo antomicblitz/deepvariant-macos-arm64-metal \
     --title "DeepVariant v${VERSION} for macOS ARM64" \
     --notes-file "${NOTES_FILE}"
 
   rm -f "${NOTES_FILE}"
 
   echo ""
-  echo "GitHub Release created: https://github.com/antomicblitz/deepvariant-osx_arm64/releases/tag/v${VERSION}"
+  echo "GitHub Release created: https://github.com/antomicblitz/deepvariant-macos-arm64-metal/releases/tag/v${VERSION}"
 else
   echo ""
   echo "To create a GitHub Release, run:"

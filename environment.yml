@@ -1,0 +1,62 @@
+# Conda environment for DeepVariant v1.9.0 on macOS ARM64 (Apple Silicon).
+#
+# Usage:
+#   conda env create -f environment.yml
+#   conda activate deepvariant
+#
+# This installs Python 3.10, GNU parallel, and all Python dependencies
+# including tensorflow-macos with Metal GPU acceleration.
+#
+# Note: tensorflow-macos and tensorflow-metal are pip-only packages,
+# so pip is used inside the conda environment for those.
+
+name: deepvariant
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.10
+  - parallel
+  - pip
+  - pip:
+    # Pin NumPy to 1.x — tensorflow-macos 2.13.1 crashes with NumPy 2.x
+    - "numpy>=1.22,<=1.24.3"
+    # TensorFlow with Metal GPU
+    - tensorflow-macos==2.13.1
+    - tensorflow-metal==1.0.0
+    # Install without deps to avoid pulling in standard 'tensorflow'
+    # (pip: --no-deps is not supported in environment.yml, so these are
+    # installed via the post-create hook in install.sh instead)
+    # - tensorflow-hub==0.14.0
+    # - tensorflow-model-optimization==0.7.5
+    # - tf-models-official==2.13.1
+    # tf-models-official runtime deps
+    - tensorflow-datasets
+    - gin-config
+    - seqeval
+    - "opencv-python-headless>=4.5"
+    - tf-slim
+    - sacrebleu
+    - pyyaml
+    # DeepVariant Python dependencies
+    - absl-py
+    - parameterized
+    - contextlib2
+    - etils
+    - typing_extensions
+    - importlib_resources
+    - sortedcontainers==2.1.0
+    - intervaltree==3.1.0
+    - "mock>=2.0.0"
+    - ml_collections
+    - clu==0.0.9
+    - protobuf==4.21.9
+    - "requests>=2.18"
+    - joblib
+    - psutil
+    - pandas==1.3.4
+    - Pillow==9.5.0
+    - pysam==0.20.0
+    - scikit-learn==1.0.2
+    - jax==0.4.35
+    - markupsafe==2.1.1
