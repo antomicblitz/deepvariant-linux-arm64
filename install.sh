@@ -458,11 +458,12 @@ exec "${DV_HOME}/scripts/uninstall.sh" "$@"
 WRAPPER
 chmod +x "${DEEPVARIANT_HOME}/bin/deepvariant-uninstall"
 
-# Create quicktest wrapper in bin/
-cat > "${DEEPVARIANT_HOME}/bin/deepvariant-quicktest" << 'WRAPPER'
+# Create quicktest wrapper in bin/ (with env activation, like run_deepvariant)
+cat > "${DEEPVARIANT_HOME}/bin/deepvariant-quicktest" << WRAPPER
 #!/bin/bash
-DV_HOME="${DEEPVARIANT_HOME:-$HOME/.deepvariant}"
-exec "${DV_HOME}/scripts/quicktest.sh" "$@"
+export DEEPVARIANT_HOME="${DEEPVARIANT_HOME}"
+${ACTIVATE_SNIPPET}
+exec "${DEEPVARIANT_HOME}/scripts/quicktest.sh" "\$@"
 WRAPPER
 chmod +x "${DEEPVARIANT_HOME}/bin/deepvariant-quicktest"
 

@@ -13,6 +13,29 @@
 set -euo pipefail
 
 DV_HOME="${DEEPVARIANT_HOME:-$HOME/.deepvariant}"
+
+# ── Activate Python environment if not already active ─────────────────────
+# When run directly (not via deepvariant-quicktest wrapper), the conda/venv
+# environment won't be active. Detect and activate it automatically.
+if [[ -f "$DV_HOME/.env_type" ]]; then
+  ENV_INFO=$(cat "$DV_HOME/.env_type")
+  if [[ "$ENV_INFO" == venv && -f "$DV_HOME/venv/bin/activate" ]]; then
+    source "$DV_HOME/venv/bin/activate"
+  elif [[ "$ENV_INFO" == conda:* ]]; then
+    CONDA_ENV_NAME="${ENV_INFO#conda:}"
+    # Find the conda env prefix and prepend to PATH (avoids needing conda init)
+    for cmd in conda mamba micromamba; do
+      if command -v "$cmd" &>/dev/null; then
+        CONDA_PREFIX_QT=$($cmd env list 2>/dev/null | grep "^${CONDA_ENV_NAME} " | awk '{print $NF}')
+        if [[ -n "$CONDA_PREFIX_QT" && -d "$CONDA_PREFIX_QT/bin" ]]; then
+          export PATH="$CONDA_PREFIX_QT/bin:$PATH"
+        fi
+        break
+      fi
+    done
+  fi
+fi
+
 DATA_DIR="$HOME/deepvariant-quicktest"
 REGION="chr20:10000000-10010000"
 SHARDS=10
