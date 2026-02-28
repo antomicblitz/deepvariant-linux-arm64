@@ -29,16 +29,43 @@ brew tap antomicblitz/deepvariant
 brew install deepvariant
 ```
 
-Then download a model and verify:
+Download a model and verify the installation:
 
 ```bash
 deepvariant-download-model WGS    # ~200 MB, one-time download
 deepvariant-quicktest              # end-to-end verification
 ```
 
+Run DeepVariant:
+
+```bash
+run_deepvariant \
+  --model_type=WGS \
+  --ref=reference.fasta \
+  --reads=input.bam \
+  --output_vcf=output.vcf \
+  --num_shards=$(sysctl -n hw.ncpu)
+```
+
+Download additional models any time:
+
+```bash
+deepvariant-download-model WES PACBIO ONT_R104
+deepvariant-download-model WGS --deeptrio
+```
+
 Available models: WGS, WES, PACBIO, ONT_R104, HYBRID, MASSEQ
 
-### conda Install
+Uninstall:
+
+```bash
+brew uninstall deepvariant
+brew untap antomicblitz/deepvariant
+```
+
+### conda / venv Install
+
+#### conda
 
 **Prerequisites:** **conda**, **mamba**, or **micromamba** — native ARM64 (e.g. [Miniforge](https://github.com/conda-forge/miniforge))
 
@@ -59,7 +86,7 @@ conda activate deepvariant
 pip install --no-deps tensorflow-hub==0.14.0 tensorflow-model-optimization==0.7.5 tf-models-official==2.13.1
 ```
 
-### venv Install (Alternative)
+#### venv
 
 If you already have **Python 3.10** installed (e.g., `brew install python@3.10`), the installer can use a lightweight venv instead of conda:
 
@@ -69,9 +96,9 @@ curl -fsSL https://raw.githubusercontent.com/antomicblitz/deepvariant-macos-arm6
 
 > **Note:** Python 3.10 specifically is required — `tensorflow-macos 2.13.1` does not support other Python versions. You also need GNU parallel installed separately (`brew install parallel`).
 
-### Environment Variables
+#### Environment Variables
 
-Customize the install with environment variables:
+Customize the `install.sh` script with environment variables:
 
 ```bash
 # Install to a custom location
@@ -91,9 +118,9 @@ curl -fsSL ... | CONDA_ENV_NAME=dv19 USE_CONDA=1 bash
 curl -fsSL ... | SKIP_ENV=1 bash
 ```
 
-### After Installation
+#### After Installation
 
-Open a new terminal (or activate your environment) and run:
+Open a new terminal, activate your environment (`conda activate deepvariant` or `source ~/.deepvariant/venv/bin/activate`), and run:
 
 ```bash
 run_deepvariant \
@@ -111,30 +138,17 @@ deepvariant-download-model WES PACBIO ONT_R104
 deepvariant-download-model WGS --deeptrio
 ```
 
-### Quicktest
+#### Quicktest
 
 Verify your installation with a small end-to-end test (requires GNU parallel):
 
 ```bash
-# Homebrew
-deepvariant-quicktest
-
-# conda/venv
 $DEEPVARIANT_HOME/scripts/quicktest.sh
 ```
 
 This runs all three DeepVariant steps on a 10kb region of chr20, confirms Metal GPU detection, and produces a VCF output.
 
-### Uninstalling
-
-**Homebrew:**
-
-```bash
-brew uninstall deepvariant
-brew untap antomicblitz/deepvariant
-```
-
-**conda/venv:**
+#### Uninstalling
 
 ```bash
 deepvariant-uninstall
