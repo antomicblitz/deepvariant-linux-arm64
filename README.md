@@ -30,7 +30,7 @@ Install pre-built binaries with a single command. No build tools required.
 If you have conda, mamba, or micromamba installed:
 
 ```bash
-USE_CONDA=1 curl -fsSL https://raw.githubusercontent.com/antomicblitz/deepvariant-macos-arm64-metal/r1.9/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/antomicblitz/deepvariant-macos-arm64-metal/r1.9/install.sh | USE_CONDA=1 bash
 ```
 
 This creates a `deepvariant` conda environment with Python 3.10, GNU parallel, and all dependencies. No need to install Python 3.10 separately.
@@ -62,20 +62,20 @@ Customize the install with environment variables:
 
 ```bash
 # Install to a custom location
-DEEPVARIANT_HOME=/path/to/dir curl -fsSL ... | bash
+curl -fsSL ... | DEEPVARIANT_HOME=/path/to/dir bash
 
 # Download specific models (WGS WES PACBIO ONT_R104 HYBRID MASSEQ ALL NONE)
-MODEL_TYPES="WGS WES PACBIO" curl -fsSL ... | bash
+curl -fsSL ... | MODEL_TYPES="WGS WES PACBIO" bash
 
 # Force conda or venv
-USE_CONDA=1 curl -fsSL ... | bash
-USE_CONDA=0 curl -fsSL ... | bash   # force venv, fail if no Python 3.10
+curl -fsSL ... | USE_CONDA=1 bash
+curl -fsSL ... | USE_CONDA=0 bash   # force venv, fail if no Python 3.10
 
 # Custom conda env name (default: deepvariant)
-CONDA_ENV_NAME=dv19 USE_CONDA=1 curl -fsSL ... | bash
+curl -fsSL ... | CONDA_ENV_NAME=dv19 USE_CONDA=1 bash
 
 # Skip environment creation entirely (if you manage your own)
-SKIP_ENV=1 curl -fsSL ... | bash
+curl -fsSL ... | SKIP_ENV=1 bash
 ```
 
 ### After Installation
