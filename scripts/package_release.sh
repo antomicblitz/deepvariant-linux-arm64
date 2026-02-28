@@ -138,6 +138,31 @@ echo "  Size: ${TARBALL_SIZE}"
 BIN_COUNT=$(find "${STAGING_DIR}/bin" -type f ! -name '*.zip' | wc -l | tr -d ' ')
 echo "  Binaries: ${BIN_COUNT}"
 
+# Update Homebrew tap formula with new SHA256
+TARBALL_SHA256=$(shasum -a 256 "${TARBALL}" | awk '{print $1}')
+echo "  SHA256: ${TARBALL_SHA256}"
+
+TAP_FORMULA="$(brew --repository antomicblitz/deepvariant 2>/dev/null)/Formula/deepvariant.rb"
+REPO_FORMULA="packaging/homebrew/Formula/deepvariant.rb"
+
+update_formula() {
+  local formula="$1"
+  if [[ -f "$formula" ]]; then
+    # Update sha256
+    sed -i '' "s/sha256 \"[a-f0-9]*\"/sha256 \"${TARBALL_SHA256}\"/" "$formula"
+    # Update version
+    sed -i '' "s/version \"[0-9.]*\"/version \"${VERSION}\"/" "$formula"
+    # Update URL version
+    sed -i '' "s|/v[0-9.]*/deepvariant-[0-9.]*-|/v${VERSION}/deepvariant-${VERSION}-|" "$formula"
+    echo "  Updated: $formula"
+  fi
+}
+
+echo ""
+echo "=== Updating Homebrew formula ==="
+update_formula "$TAP_FORMULA"
+update_formula "$REPO_FORMULA"
+
 # Create GitHub Release if --release flag is passed
 if [[ "${1:-}" == "--release" ]]; then
   echo ""
@@ -154,15 +179,24 @@ Pre-built native binaries for Apple Silicon (M1/M2/M3/M4).
 
 ## Quick Install
 
+### Homebrew (Recommended)
+
+```bash
+brew tap antomicblitz/deepvariant
+brew install deepvariant
+deepvariant-download-model WGS
+deepvariant-quicktest
+```
+
+### conda
+
 Requires [conda/mamba/micromamba](https://github.com/conda-forge/miniforge) (native ARM64):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/antomicblitz/deepvariant-macos-arm64-metal/r1.9/install.sh | USE_CONDA=1 bash
 ```
 
-This creates a `deepvariant` conda environment with Python 3.10, GNU parallel, and all dependencies.
-
-### venv Alternative
+### venv
 
 If you already have Python 3.10 installed (`brew install python@3.10`):
 
@@ -180,7 +214,7 @@ curl -fsSL https://raw.githubusercontent.com/antomicblitz/deepvariant-macos-arm6
 
 ## Metal GPU
 
-The install script sets up `tensorflow-macos` + `tensorflow-metal` for GPU-accelerated variant calling via Apple's Metal API.
+`tensorflow-macos` + `tensorflow-metal` enables GPU-accelerated variant calling via Apple's Metal API (~4.25x speedup for call_variants inference).
 
 ## Verify Installation
 
@@ -205,4 +239,13 @@ else
   echo ""
   echo "To create a GitHub Release, run:"
   echo "  ./scripts/package_release.sh --release"
+fi
+
+# Remind to push Homebrew tap if formula was updated
+if [[ -f "$TAP_FORMULA" ]]; then
+  echo ""
+  echo "=== Homebrew tap ==="
+  echo "  Formula updated. To publish:"
+  echo "    cd $(dirname $(dirname "$TAP_FORMULA"))"
+  echo "    git add -A && git commit -m 'Update deepvariant to v${VERSION}' && git push"
 fi

@@ -93,7 +93,7 @@ curl -fsSL ... | SKIP_ENV=1 bash
 
 ### After Installation
 
-Open a new terminal and run:
+Open a new terminal (or activate your environment) and run:
 
 ```bash
 run_deepvariant \
@@ -116,6 +116,10 @@ deepvariant-download-model WGS --deeptrio
 Verify your installation with a small end-to-end test (requires GNU parallel):
 
 ```bash
+# Homebrew
+deepvariant-quicktest
+
+# conda/venv
 $DEEPVARIANT_HOME/scripts/quicktest.sh
 ```
 
@@ -130,7 +134,7 @@ brew uninstall deepvariant
 brew untap antomicblitz/deepvariant
 ```
 
-**conda/venv install:**
+**conda/venv:**
 
 ```bash
 deepvariant-uninstall
