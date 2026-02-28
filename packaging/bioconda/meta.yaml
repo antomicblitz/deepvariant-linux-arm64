@@ -1,0 +1,86 @@
+{% set name = "deepvariant" %}
+{% set version = "1.9.0" %}
+{% set sha256_source = "6f7f413bb2feced916553b9dc0957369545883f67b4777280f1dabcd9fd2ab3b" %}
+{% set sha256_macos_arm64 = "30b0bfc93634bd869ec624ed30d67a20c60a1861c833430eb24be3594fa89bd9" %}
+
+package:
+  name: {{ name }}
+  version: {{ version }}
+
+source:
+  - url: https://github.com/google/deepvariant/archive/v{{ version }}.tar.gz  # [linux]
+    sha256: {{ sha256_source }}  # [linux]
+  - url: https://github.com/antomicblitz/deepvariant-macos-arm64-metal/releases/download/v{{ version }}/deepvariant-{{ version }}-macos-arm64.tar.gz  # [osx and arm64]
+    sha256: {{ sha256_macos_arm64 }}  # [osx and arm64]
+
+build:
+  number: 0
+  skip: true  # [not (linux64 or (osx and arm64))]
+  run_exports:
+    - {{ pin_subpackage("deepvariant", max_pin="x") }}
+
+requirements:
+  host:
+    - python >=3.10,<3.11
+    - pip
+    - setuptools
+  run:
+    - python >=3.10,<3.11
+    - absl-py
+    - numpy >=1.22,<=1.24.3
+    - protobuf 4.21.*
+    - contextlib2
+    - intervaltree ==3.1.0
+    - sortedcontainers ==2.1.0
+    - mock >=2.0.0
+    - psutil
+    - requests >=2.18
+    - joblib
+    - scipy
+    - pyyaml
+    - pandas ==1.3.4
+    - pillow ==9.5.0
+    - pysam ==0.20.0
+    - scikit-learn ==1.0.2
+    - parallel
+    # --- Linux-only ---
+    - tensorflow ==2.15.*  # [linux]
+    - tensorflow-estimator  # [linux]
+    - openjdk 11.0.*  # [linux]
+    # --- macOS ARM64 ---
+    - tensorflow-macos ==2.13.1  # [osx and arm64]
+
+test:
+  commands:
+    # Verify Python imports work
+    - python -c "import tensorflow as tf; print(tf.__version__)"
+    # Verify binaries are on PATH and print help
+    - make_examples --helpshort 2>&1 | grep -q "make_examples"  # [linux]
+    - call_variants --helpshort 2>&1 | grep -q "call_variants"  # [linux]
+    # On macOS, test via the venv python
+    - test -x $PREFIX/libexec/deepvariant/bin/make_examples  # [osx and arm64]
+    - test -x $PREFIX/libexec/deepvariant/bin/call_variants  # [osx and arm64]
+
+about:
+  home: "https://github.com/google/deepvariant"
+  dev_url: "https://github.com/antomicblitz/deepvariant-macos-arm64-metal"
+  doc_url: "https://github.com/google/deepvariant/blob/v{{ version }}/README.md"
+  license: "BSD-3-Clause"
+  license_family: BSD
+  license_file: LICENSE
+  summary: "Deep learning variant caller for next-generation DNA sequencing data"
+  description: |
+    DeepVariant is a deep neural network-based variant caller that takes aligned
+    reads (BAM/CRAM), produces pileup image tensors, classifies each tensor using
+    a CNN, and reports variants in VCF/gVCF format.
+
+    On macOS ARM64 (Apple Silicon), this package installs pre-built native binaries
+    with Metal GPU acceleration via tensorflow-metal (~4.25x speedup for inference).
+
+extra:
+  additional-platforms:
+    - osx-arm64
+  identifiers:
+    - doi:10.1038/nbt.4235
+  recipe-maintainers:
+    - antomicblitz

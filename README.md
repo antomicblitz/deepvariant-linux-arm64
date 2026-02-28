@@ -20,12 +20,27 @@ DeepVariant supports germline variant-calling in diploid organisms. For full doc
 
 Install pre-built binaries with a single command. No build tools required.
 
-### Prerequisites
+### Homebrew (Recommended)
 
-- **macOS** on Apple Silicon (M1/M2/M3/M4)
-- **conda**, **mamba**, or **micromamba** — native ARM64 (e.g. [Miniforge](https://github.com/conda-forge/miniforge))
+The simplest way to install on macOS:
 
-### Install
+```bash
+brew tap antomicblitz/deepvariant
+brew install deepvariant
+```
+
+Then download a model and verify:
+
+```bash
+deepvariant-download-model WGS    # ~200 MB, one-time download
+deepvariant-quicktest              # end-to-end verification
+```
+
+Available models: WGS, WES, PACBIO, ONT_R104, HYBRID, MASSEQ
+
+### conda Install
+
+**Prerequisites:** **conda**, **mamba**, or **micromamba** — native ARM64 (e.g. [Miniforge](https://github.com/conda-forge/miniforge))
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/antomicblitz/deepvariant-macos-arm64-metal/r1.9/install.sh | USE_CONDA=1 bash
@@ -108,7 +123,14 @@ This runs all three DeepVariant steps on a 10kb region of chr20, confirms Metal 
 
 ### Uninstalling
 
-Run the uninstall script:
+**Homebrew:**
+
+```bash
+brew uninstall deepvariant
+brew untap antomicblitz/deepvariant
+```
+
+**conda/venv install:**
 
 ```bash
 deepvariant-uninstall
