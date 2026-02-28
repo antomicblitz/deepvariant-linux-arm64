@@ -240,6 +240,8 @@ TensorFlow Metal GPU is installed and available on all Apple Silicon Macs, but b
 
 ### Running the Benchmark Yourself
 
+The benchmark script automatically prevents macOS from sleeping during the run using `caffeinate`. If you run DeepVariant manually on large datasets, consider wrapping your command with `caffeinate -i` to prevent idle sleep from interrupting long-running stages.
+
 ```bash
 # Full benchmark (downloads ~5 GB of data on first run)
 bash scripts/benchmark.sh
@@ -249,6 +251,9 @@ bash scripts/benchmark.sh --skip-happy --runs 1
 
 # Visualize results
 python3 scripts/benchmark_viz.py ~/deepvariant-benchmark/benchmark_results.json --show
+
+# For manual long-running jobs, prevent sleep:
+caffeinate -i python3 bazel-bin/deepvariant/call_variants.zip ...
 ```
 
 ---
