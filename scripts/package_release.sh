@@ -117,7 +117,23 @@ cp scripts/uninstall.sh "${STAGING_DIR}/scripts/"
 cp scripts/quicktest.sh "${STAGING_DIR}/scripts/"
 cp scripts/deepvariant-download-model "${STAGING_DIR}/scripts/"
 
+echo "Downloading pip-only wheels (not available via conda)..."
+mkdir -p "${STAGING_DIR}/wheels"
+pip download --no-deps --no-cache-dir -d "${STAGING_DIR}/wheels" \
+  "tensorflow-macos==2.13.1" \
+  "tensorflow-metal==1.0.0" \
+  "tensorflow-hub==0.14.0" \
+  "tensorflow-model-optimization==0.7.5" \
+  "tf-models-official==2.13.1" \
+  "tf-slim" \
+  "ml_collections" \
+  "clu==0.0.9" \
+  "etils"
+WHEEL_COUNT=$(ls -1 "${STAGING_DIR}/wheels/"*.whl 2>/dev/null | wc -l | tr -d ' ')
+echo "  Downloaded ${WHEEL_COUNT} wheels"
+
 echo "Copying licenses..."
+cp LICENSE "${STAGING_DIR}/"
 if [[ -f "bazel-bin/licenses.zip" ]]; then
   cp "bazel-bin/licenses.zip" "${STAGING_DIR}/"
 fi
