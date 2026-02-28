@@ -115,6 +115,7 @@ cp scripts/run_deepvariant.py "${STAGING_DIR}/scripts/"
 cp scripts/run_deeptrio.py "${STAGING_DIR}/scripts/"
 cp scripts/uninstall.sh "${STAGING_DIR}/scripts/"
 cp scripts/quicktest.sh "${STAGING_DIR}/scripts/"
+cp scripts/deepvariant-download-model "${STAGING_DIR}/scripts/"
 
 echo "Copying licenses..."
 if [[ -f "bazel-bin/licenses.zip" ]]; then
@@ -153,6 +154,18 @@ Pre-built native binaries for Apple Silicon (M1/M2/M3/M4).
 
 ## Quick Install
 
+Requires [conda/mamba/micromamba](https://github.com/conda-forge/miniforge) (native ARM64):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/antomicblitz/deepvariant-macos-arm64-metal/r1.9/install.sh | USE_CONDA=1 bash
+```
+
+This creates a `deepvariant` conda environment with Python 3.10, GNU parallel, and all dependencies.
+
+### venv Alternative
+
+If you already have Python 3.10 installed (`brew install python@3.10`):
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/antomicblitz/deepvariant-macos-arm64-metal/r1.9/install.sh | bash
 ```
@@ -162,16 +175,20 @@ curl -fsSL https://raw.githubusercontent.com/antomicblitz/deepvariant-macos-arm6
 - 14 self-executing Python zip binaries (make_examples, call_variants, postprocess_variants, etc.)
 - 1 native C++ binary (fast_pipeline)
 - Runner scripts (run_deepvariant.py, run_deeptrio.py)
-
-## Requirements
-
-- macOS on Apple Silicon (M1/M2/M3/M4)
-- Python 3.10
-- Models are downloaded separately during installation from Google Cloud Storage
+- Quicktest script for end-to-end verification
+- Uninstall script
 
 ## Metal GPU
 
-The install script sets up tensorflow-macos + tensorflow-metal for GPU-accelerated variant calling.
+The install script sets up `tensorflow-macos` + `tensorflow-metal` for GPU-accelerated variant calling via Apple's Metal API.
+
+## Verify Installation
+
+```bash
+deepvariant-quicktest
+```
+
+Runs all three DeepVariant steps on a 10kb region of chr20, confirms Metal GPU detection, and produces a VCF output.
 NOTES
 
   gh release create "v${VERSION}" \
