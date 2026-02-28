@@ -232,6 +232,10 @@ if [[ "$ENV_TYPE" == "conda" ]]; then
   else
     echo "--- Creating conda environment '${CONDA_ENV_NAME}'..."
 
+    # Force ARM64 platform — older conda installs (especially x86_64 builds
+    # running under Rosetta) may default to osx-64 and fail to solve.
+    export CONDA_SUBDIR=osx-arm64
+
     # Create env with Python 3.10 and GNU parallel
     ${CONDA_CMD} create -y -n "${CONDA_ENV_NAME}" python=3.10 parallel -c conda-forge
 
@@ -259,6 +263,9 @@ for e in envs:
 
     export PATH="${CONDA_PREFIX}/bin:${PATH}"
     export CONDA_PREFIX
+
+    # Pin ARM64 subdir inside the env so future conda installs stay native
+    ${CONDA_CMD} config --env --set subdir osx-arm64 2>/dev/null || true
 
     install_pip_packages
 
