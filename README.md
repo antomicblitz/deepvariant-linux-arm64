@@ -335,17 +335,23 @@ This fork modifies the following files from upstream DeepVariant v1.9.0. For the
 
 ## Known Issues
 
-1. **zlib `zutil.h` patch is not persistent.** It lives in the Bazel cache and must be reapplied after `bazel clean`. See step 3 above.
+1. **`postprocess_variants` segfaults with `--cpus >1`.** When `call_variants` detects a GPU, it auto-creates multiple output shards (one per CPU writer thread). If `postprocess_variants` then runs with `--cpus >1`, it partitions the genome and some partitions produce empty VCFs that `bcftools naive_concat` cannot parse, causing a segfault. **Workaround:** use `--cpus 1`. This forces single-partition mode and bypasses the concat. The quicktest and benchmark scripts already apply this fix. The performance impact is negligible for chr20 (~16s) and minor for full genomes (~7-10 minutes single-threaded vs ~2-3 minutes multi-threaded).
 
-2. **zsh escapes `!` in strings.** The build script uses `bytes([0x23, 0x21])` to write `#!` shebangs. If you write custom scripts that generate shebangs, be aware of this.
+2. **`make_examples` appends to existing tfrecord files.** If a previous run was interrupted, leftover partial files will corrupt the next run with `DataLossError: inflate() failed with error -3`. Always clean the output directory before re-running, or use the benchmark script which does this automatically.
 
-3. **`int64_t` is `long long` on macOS ARM64**, while it is `long` on Linux x86_64. Both are 64-bit, but they are different types to the compiler, causing `std::max(int64_t, 0L)` template deduction failures. All instances in DeepVariant have been fixed.
+3. **zlib `zutil.h` patch is not persistent.** It lives in the Bazel cache and must be reapplied after `bazel clean`. See step 3 above.
 
-4. **Boost 1.90+** split the `process` API into v1 and v2 namespaces. The build uses `-DBOOST_PROCESS_VERSION=1` to select v1.
+4. **zsh escapes `!` in strings.** The build script uses `bytes([0x23, 0x21])` to write `#!` shebangs. If you write custom scripts that generate shebangs, be aware of this.
 
-5. **`tf-models-official`** depends on `tensorflow-text`, which has no ARM64 wheels for 2.13.x. It is installed with `--no-deps`. DeepVariant only uses `official.modeling.optimization`, which does not require `tensorflow-text`.
+5. **`int64_t` is `long long` on macOS ARM64**, while it is `long` on Linux x86_64. Both are 64-bit, but they are different types to the compiler, causing `std::max(int64_t, 0L)` template deduction failures. All instances in DeepVariant have been fixed.
 
-6. **Fast pipeline** (`fast_pipeline`) runs `make_examples` and `call_variants` simultaneously. `tensorflow-metal` registers the Metal GPU for `call_variants` inference, though benchmarks show minimal GPU speedup in v1.9 due to the "small model" optimization.
+6. **Boost 1.90+** split the `process` API into v1 and v2 namespaces. The build uses `-DBOOST_PROCESS_VERSION=1` to select v1.
+
+7. **`tf-models-official`** depends on `tensorflow-text`, which has no ARM64 wheels for 2.13.x. It is installed with `--no-deps`. DeepVariant only uses `official.modeling.optimization`, which does not require `tensorflow-text`.
+
+8. **`CUDA_VISIBLE_DEVICES="-1"` does not disable Metal GPU.** The TensorFlow Metal plugin ignores CUDA environment variables entirely. There is no known way to force CPU-only inference on Apple Silicon when `tensorflow-metal` is installed.
+
+9. **Fast pipeline** (`fast_pipeline`) runs `make_examples` and `call_variants` simultaneously. `tensorflow-metal` registers the Metal GPU for `call_variants` inference, though benchmarks show minimal GPU speedup in v1.9 due to the "small model" optimization.
 
 ---
 
