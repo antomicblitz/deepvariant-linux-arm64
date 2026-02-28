@@ -159,7 +159,9 @@ time "$DV_HOME/bin/postprocess_variants" \
 echo ""
 echo "[ 4/4 ]  Results"
 if [[ -f "$OUT_VCF" ]]; then
-    VARIANT_COUNT=$(zcat "$OUT_VCF" 2>/dev/null | grep -v '^#' | wc -l | tr -d ' ')
+    # Capture decompressed VCF first to avoid pipefail issues with zcat|grep|wc
+    VCF_CONTENT=$(zcat "$OUT_VCF" 2>/dev/null || true)
+    VARIANT_COUNT=$(echo "$VCF_CONTENT" | grep -vc '^#' || true)
     pass "VCF confirmed — $VARIANT_COUNT variants called"
     echo "         Output: $OUT_VCF"
     echo "         gVCF:   $OUT_GVCF"

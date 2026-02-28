@@ -504,12 +504,22 @@ fi
 if [[ -n "$SHELL_RC" ]]; then
   MARKER="# DeepVariant macOS ARM64"
   if ! grep -q "$MARKER" "$SHELL_RC" 2>/dev/null; then
-    cat >> "$SHELL_RC" << PROFILE
+    if [[ "$ENV_TYPE" == "conda" ]]; then
+      cat >> "$SHELL_RC" << PROFILE
+
+${MARKER}
+export DEEPVARIANT_HOME="${DEEPVARIANT_HOME}"
+export PATH="\${DEEPVARIANT_HOME}/bin:\${PATH}"
+conda activate ${CONDA_ENV_NAME}
+PROFILE
+    else
+      cat >> "$SHELL_RC" << PROFILE
 
 ${MARKER}
 export DEEPVARIANT_HOME="${DEEPVARIANT_HOME}"
 export PATH="\${DEEPVARIANT_HOME}/bin:\${PATH}"
 PROFILE
+    fi
     echo "  Added DEEPVARIANT_HOME and PATH to ${SHELL_RC}"
   else
     echo "  Shell profile already configured in ${SHELL_RC}"

@@ -123,6 +123,9 @@ if [[ -n "$SHELL_RC" ]]; then
       if (skip && /^export (DEEPVARIANT_HOME|PATH)=/) {
         next
       }
+      if (skip && /^conda activate/) {
+        next
+      }
       if (skip && /^$/) {
         skip = 0
         next
