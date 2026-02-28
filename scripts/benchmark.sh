@@ -17,6 +17,11 @@
 
 set -euo pipefail
 
+# ── Prevent macOS sleep ──────────────────────────────────────────────────────
+# caffeinate -i prevents idle sleep; -w $$ ties it to this script's lifetime.
+# Runs in the background and auto-exits when the script finishes.
+caffeinate -i -w $$ &
+
 # ── Defaults ──────────────────────────────────────────────────────────────────
 DV_HOME="${DEEPVARIANT_HOME:-$HOME/.deepvariant}"
 NUM_RUNS=1
