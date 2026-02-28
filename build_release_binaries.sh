@@ -79,6 +79,9 @@ function fix_zip_file {
     sed -i '' 's/  for info in zf.infolist():/  if True:/' __main__.py
     sed -i '' 's/  zf.extract(info, dest_dir)/  os.system("unzip -qq " + zip_path + " -d " + dest_dir)/' __main__.py
     sed -i '' 's/  # UNC-prefixed paths must be absolute\/normalized. See/  return/' __main__.py
+    # Make PYTHON_BINARY respect PATH/venv instead of using hardcoded absolute path.
+    # This allows the binary to use the venv's Python (with tensorflow-metal GPU).
+    sed -i '' "s|PYTHON_BINARY = '/usr/bin/python3'|PYTHON_BINARY = 'python3'|" __main__.py
   else
     sed -i 's/  with zipfile.ZipFile(zip_path) as zf:/  if True:/' __main__.py
     sed -i 's/  for info in zf.infolist():/  if True:/' __main__.py
@@ -98,7 +101,16 @@ function fix_zip_file {
   # file, it will uncompress and run the __main__.py.  This is the trick that
   # bazel uses to make a self-executable zip, see for example
   # https://github.com/bazelbuild/bazel/blob/558b717e906156477b1c6bd29d049a0fb8e18b27/src/main/java/com/google/devtools/build/lib/bazel/rules/python/BazelPythonSemantics.java#L193
-  echo '#!/usr/bin/env python3' | cat - "${ZIP_OUT}" > "${SELF_ZIP}"
+  # Use python3 to prepend shebang. zsh escapes '!' even in python -c string
+  # literals (b'#!' becomes b'#\!'), so use explicit byte values for '#!'.
+  python3 -c "
+import sys
+shebang = bytes([0x23, 0x21]) + b'/usr/bin/env python3\n'
+with open(sys.argv[1], 'rb') as zf:
+    with open(sys.argv[2], 'wb') as out:
+        out.write(shebang)
+        out.write(zf.read())
+" "${ZIP_OUT}" "${SELF_ZIP}"
 
   # Step 7: Copy it back and make it executable.
   popd > /dev/null

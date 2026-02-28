@@ -145,18 +145,19 @@ if [[ "${DV_USE_PREINSTALLED_TF}" = "1" ]]; then
   echo "Skipping TensorFlow installation at user request; will use pre-installed TensorFlow."
 else
   echo "Installing TensorFlow ${DV_TENSORFLOW_STANDARD_CPU_WHL_VERSION} for macOS ARM64"
-  ${PYTHON_CMD} -m pip install "${PIP_ARGS[@]}" --upgrade "tensorflow==${DV_TENSORFLOW_STANDARD_CPU_WHL_VERSION}"
+  # IMPORTANT: Use tensorflow-macos (Apple's build) + tensorflow-metal for GPU.
+  # The standard 'tensorflow' pip package also includes Metal registration,
+  # which causes a "platform already registered" crash when tensorflow-metal
+  # tries to register it again. tensorflow-macos is designed to work with
+  # tensorflow-metal and avoids this conflict.
+  ${PYTHON_CMD} -m pip install "${PIP_ARGS[@]}" --upgrade "tensorflow-macos==${DV_TENSORFLOW_STANDARD_CPU_WHL_VERSION}"
+  ${PYTHON_CMD} -m pip install "${PIP_ARGS[@]}" "tensorflow-metal==1.0.0"
 
-  # Note: tensorflow-metal causes a "platform already registered" crash with
-  # TF 2.13 because tensorflow-macos 2.13 already includes Metal platform
-  # registration. TF 2.13 runs on Apple Silicon CPU natively (ARM64 optimized).
-  # For Metal GPU support, you would need TF 2.12 (tensorflow-macos) +
-  # tensorflow-metal 0.8.0, but that creates version incompatibility with the
-  # C++ build. CPU-only mode is used for now.
-  echo "Note: TF 2.13 runs in CPU-only mode on macOS ARM64 (native ARM64 optimized)."
-  echo "      Metal GPU acceleration requires TF 2.12 which is incompatible with the C++ build."
+  # Install deps that would otherwise pull in regular 'tensorflow' and break things
+  ${PYTHON_CMD} -m pip install "${PIP_ARGS[@]}" --no-deps "tensorflow-hub==0.14.0"
+  ${PYTHON_CMD} -m pip install "${PIP_ARGS[@]}" --no-deps "tensorflow-model-optimization==0.7.5"
 
-  # Verify TensorFlow works
+  # Verify TensorFlow and Metal GPU
   echo "Verifying TensorFlow setup..."
   ${PYTHON_CMD} -c "
 import tensorflow as tf
@@ -164,6 +165,11 @@ print('TensorFlow version:', tf.__version__)
 print('Available devices:')
 for d in tf.config.list_physical_devices():
     print(f'  {d.device_type}: {d.name}')
+gpu_devices = tf.config.list_physical_devices('GPU')
+if gpu_devices:
+    print(f'Metal GPU acceleration: ENABLED ({len(gpu_devices)} GPU(s))')
+else:
+    print('Metal GPU acceleration: NOT AVAILABLE (CPU only)')
 " || echo "WARNING: TensorFlow verification failed (non-fatal)"
 fi
 
@@ -193,5 +199,8 @@ note_build_stage "run-prereq-macos.sh complete"
 echo ""
 echo "=========================================="
 echo "macOS ARM64 runtime prerequisites installed."
-echo "TensorFlow with Metal GPU support is ready."
+echo "IMPORTANT: Use tensorflow-macos + tensorflow-metal for GPU."
+echo "  Do NOT install the regular 'tensorflow' package alongside"
+echo "  tensorflow-metal — it causes a 'platform already registered' crash."
+echo "  A clean venv is recommended to avoid package conflicts."
 echo "=========================================="
