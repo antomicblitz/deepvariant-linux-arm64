@@ -72,6 +72,18 @@ for cmd in conda mamba micromamba; do
   fi
 done
 
+# Check if conda is x86_64 on ARM64 (reports osx-64 platform).
+# `which conda` is a script wrapper, so `file` doesn't detect arch —
+# use `conda info` to check the reported platform instead.
+CONDA_IS_X86=false
+if [[ -n "$CONDA_CMD" && "$(uname -m)" == "arm64" ]]; then
+  CONDA_PLATFORM=$(${CONDA_CMD} info --json 2>/dev/null \
+    | python3 -c "import sys,json; print(json.load(sys.stdin).get('platform',''))" 2>/dev/null || true)
+  if [[ "$CONDA_PLATFORM" == "osx-64" ]]; then
+    CONDA_IS_X86=true
+  fi
+fi
+
 # Check Python 3.10 (needed for venv path)
 PYTHON_CMD=""
 for cmd in python3.10 python3; do
@@ -95,8 +107,7 @@ elif [[ "${USE_CONDA}" == "1" ]]; then
     exit 1
   fi
   # Check if conda is x86_64 running under Rosetta on ARM64
-  CONDA_ARCH=$(file "$(which "$CONDA_CMD")" 2>/dev/null | grep -o 'x86_64' || true)
-  if [[ "$(uname -m)" == "arm64" && -n "$CONDA_ARCH" ]]; then
+  if [[ "$CONDA_IS_X86" == true ]]; then
     echo "  WARNING: Your conda is an x86_64 build running under Rosetta."
     echo "           tensorflow-macos requires native ARM64 Python."
     if [[ -n "$PYTHON_CMD" ]]; then
@@ -128,8 +139,7 @@ else
     ENV_TYPE="venv"
   elif [[ -n "$CONDA_CMD" ]]; then
     # Check if conda is x86_64 on ARM64 — can't install tensorflow-macos
-    CONDA_ARCH=$(file "$(which "$CONDA_CMD")" 2>/dev/null | grep -o 'x86_64' || true)
-    if [[ "$(uname -m)" == "arm64" && -n "$CONDA_ARCH" ]]; then
+    if [[ "$CONDA_IS_X86" == true ]]; then
       echo "ERROR: Python 3.10 not found and your conda is x86_64 (Rosetta)."
       echo "       tensorflow-macos requires native ARM64 Python."
       echo ""
