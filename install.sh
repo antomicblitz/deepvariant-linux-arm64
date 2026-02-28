@@ -91,10 +91,28 @@ elif [[ "${USE_CONDA}" == "1" ]]; then
   # User explicitly requested conda
   if [[ -z "$CONDA_CMD" ]]; then
     echo "ERROR: USE_CONDA=1 but no conda/mamba/micromamba found."
-    echo "       Install miniconda: https://docs.conda.io/en/latest/miniconda.html"
+    echo "       Install Miniforge (native ARM64): https://github.com/conda-forge/miniforge"
     exit 1
   fi
-  ENV_TYPE="conda"
+  # Check if conda is x86_64 running under Rosetta on ARM64
+  CONDA_ARCH=$(file "$(which "$CONDA_CMD")" 2>/dev/null | grep -o 'x86_64' || true)
+  if [[ "$(uname -m)" == "arm64" && -n "$CONDA_ARCH" ]]; then
+    echo "  WARNING: Your conda is an x86_64 build running under Rosetta."
+    echo "           tensorflow-macos requires native ARM64 Python."
+    if [[ -n "$PYTHON_CMD" ]]; then
+      echo "  Falling back to venv (your $PYTHON_CMD is native ARM64)."
+      ENV_TYPE="venv"
+    else
+      echo ""
+      echo "ERROR: Cannot create a working environment with x86_64 conda."
+      echo "       Install native ARM64 conda (Miniforge):"
+      echo "         curl -fsSL https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh | bash"
+      echo "       Or install Python 3.10: brew install python@3.10"
+      exit 1
+    fi
+  else
+    ENV_TYPE="conda"
+  fi
 elif [[ "${USE_CONDA}" == "0" ]]; then
   # User explicitly requested venv
   if [[ -z "$PYTHON_CMD" ]]; then
@@ -109,15 +127,25 @@ else
   if [[ -n "$PYTHON_CMD" ]]; then
     ENV_TYPE="venv"
   elif [[ -n "$CONDA_CMD" ]]; then
+    # Check if conda is x86_64 on ARM64 — can't install tensorflow-macos
+    CONDA_ARCH=$(file "$(which "$CONDA_CMD")" 2>/dev/null | grep -o 'x86_64' || true)
+    if [[ "$(uname -m)" == "arm64" && -n "$CONDA_ARCH" ]]; then
+      echo "ERROR: Python 3.10 not found and your conda is x86_64 (Rosetta)."
+      echo "       tensorflow-macos requires native ARM64 Python."
+      echo ""
+      echo "  Option 1 (brew):  brew install python@3.10"
+      echo "  Option 2 (conda): Install native ARM64 conda (Miniforge):"
+      echo "                     https://github.com/conda-forge/miniforge"
+      exit 1
+    fi
     echo "  Python 3.10 not found, but ${CONDA_CMD} detected — using conda."
     ENV_TYPE="conda"
   else
     echo "ERROR: Python 3.10 is required (for tensorflow-macos 2.13.1 compatibility)."
     echo ""
     echo "  Option 1 (brew):  brew install python@3.10"
-    echo "  Option 2 (conda): Install miniconda, then re-run this script."
-    echo "                     https://docs.conda.io/en/latest/miniconda.html"
-    echo "  Option 3:         USE_CONDA=1 curl -fsSL ... | bash"
+    echo "  Option 2 (conda): Install Miniforge (native ARM64 conda):"
+    echo "                     https://github.com/conda-forge/miniforge"
     exit 1
   fi
 fi
@@ -242,7 +270,7 @@ if [[ "$ENV_TYPE" == "conda" ]]; then
     CONDA_VER=$(${CONDA_CMD} --version 2>&1 | grep -oE '[0-9]+' | head -1)
     if [[ -n "$CONDA_VER" && "$CONDA_VER" -lt 24 ]]; then
       echo "--- Updating conda (${CONDA_CMD} $(${CONDA_CMD} --version 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+') is too old for macOS $(sw_vers -productVersion))..."
-      ${CONDA_CMD} update -y -n base -c conda-forge conda 2>&1 | tail -3
+      ${CONDA_CMD} update -y -n base --override-channels -c conda-forge conda 2>&1 | tail -3
       echo ""
     fi
 
