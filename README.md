@@ -22,7 +22,7 @@ Install pre-built binaries with a single command. No build tools required.
 
 ### Homebrew (Recommended)
 
-The simplest way to install on macOS:
+**Prerequisites:** **macOS** on Apple Silicon (M1/M2/M3/M4) with [Homebrew](https://brew.sh) installed.
 
 ```bash
 brew tap antomicblitz/deepvariant
