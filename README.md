@@ -3,9 +3,9 @@
 [![release](https://img.shields.io/badge/base-v1.9.0-green?logo=github)](https://github.com/google/deepvariant/releases)
 [![platform](https://img.shields.io/badge/platform-macOS%20ARM64-blue?logo=apple)](https://support.apple.com/en-us/116943)
 
-This is a fork of [Google DeepVariant](https://github.com/google/deepvariant) v1.9.0 that builds and runs **natively on macOS with Apple Silicon** (M1, M2, M3, M4). TensorFlow Metal GPU support is included via `tensorflow-metal`, though [benchmarks show](#benchmarks) the primary advantage is native ARM64 execution rather than GPU acceleration.
+This is a fork of [Google DeepVariant](https://github.com/google/deepvariant) v1.9.0 that builds and runs **natively on macOS with Apple Silicon** (M1, M2, M3, M4) — no Docker, no Rosetta, no remote server.
 
-> **Note:** Google officially supports DeepVariant only on Ubuntu 22.04. This fork patches the Bazel build system, third-party dependencies, and C++ source code to compile natively on macOS ARM64 with Apple Clang.
+> **Why this matters:** DeepVariant cannot run on Apple Silicon Macs via Docker. The official Docker image [crashes immediately](https://github.com/google/deepvariant/issues/657) because TensorFlow requires AVX instructions that Rosetta 2 cannot translate inside Docker's Linux VM. There is no official macOS build. Before this fork, Mac users had no local option — they needed a remote Linux x86_64 server. This fork patches the Bazel build system, C++ source, and third-party dependencies to compile and run natively on macOS ARM64 with Apple Clang.
 
 ## What is DeepVariant?
 
@@ -210,23 +210,25 @@ We benchmarked DeepVariant v1.9.0 on an **Apple M1 Max** (8 performance cores, 3
 
 - **Overall:** The M1 Max processes HG003 chr20 in ~8 minutes. It is competitive on a per-core basis for CPU-bound stages but cannot match cloud instances with many more cores. The 96-core GCP instance is ~5x faster overall, as expected given the 12:1 core ratio.
 
-### Is There Value in Running DeepVariant on Apple Silicon?
+### Why Run DeepVariant on Apple Silicon?
 
-**Yes, for specific use cases:**
+The alternative is **not running it at all**. The official DeepVariant Docker image [crashes on Apple Silicon](https://github.com/google/deepvariant/issues/657) because TensorFlow's binaries require AVX instructions, which Rosetta 2 cannot translate inside Docker's Linux VM. QEMU-based emulation technically works but is 10-20x slower and impractical. There is no official macOS build. Before this fork, Mac users needed a remote Linux server.
 
-1. **Local development and testing.** Run the full DeepVariant pipeline on your laptop without Docker, cloud instances, or network access. This is valuable for pipeline development, parameter tuning, and education.
+With this native build, Apple Silicon Macs become viable for:
 
-2. **Small datasets and targeted regions.** For single-chromosome, exome, or panel data, the M1 Max completes in minutes — fast enough for interactive workflows without paying for cloud compute.
+1. **Local development and testing.** Run the full pipeline on your laptop without Docker, cloud instances, or network access. Valuable for pipeline development, parameter tuning, and education.
 
-3. **Privacy and data sovereignty.** Clinical or restricted datasets that cannot leave your facility can be processed locally on commodity hardware.
+2. **Small datasets and targeted regions.** Exome, panel, or single-chromosome analyses complete in minutes — fast enough for interactive workflows.
 
-4. **Cost.** No cloud compute charges, no per-hour billing. The Mac you already own can run DeepVariant. For labs running a few samples per week, the cost advantage is significant.
+3. **Privacy and data sovereignty.** Clinical or restricted datasets that cannot leave your facility can be processed locally.
 
-5. **Reproducibility.** A self-contained local environment with no Docker or cloud dependencies makes it easier to reproduce results and share methods.
+4. **Cost.** No cloud compute charges. The Mac you already own can run DeepVariant.
+
+5. **Reproducibility.** A self-contained local environment with no Docker or cloud dependencies.
 
 **Not recommended for:**
 
-- Full whole-genome sequencing at scale (30x WGS, full genome). At ~6-12 hours estimated per sample, a 96-core cloud instance at ~79 minutes is more practical for production workloads.
+- Full whole-genome sequencing at scale (30x WGS). A 96-core cloud instance at ~79 minutes is more practical than the estimated 6-12 hours on a Mac.
 - High-throughput batched processing. Use cloud instances or HPC clusters.
 
 ### Metal GPU Status
