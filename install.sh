@@ -236,10 +236,15 @@ if [[ "$ENV_TYPE" == "conda" ]]; then
     # running under Rosetta) may default to osx-64 and fail to solve.
     export CONDA_SUBDIR=osx-arm64
 
-    # Disable strict channel priority — the classic solver in older conda
-    # versions has bugs with __osx virtual package version comparisons
-    # under strict mode, causing false "incompatible with your system" errors.
-    export CONDA_CHANNEL_PRIORITY=flexible
+    # Conda < 24.x has a broken solver that can't match __osx virtual package
+    # versions on macOS 15+ (reports false "incompatible with your system" errors).
+    # Update conda automatically if it's too old.
+    CONDA_VER=$(${CONDA_CMD} --version 2>&1 | grep -oE '[0-9]+' | head -1)
+    if [[ -n "$CONDA_VER" && "$CONDA_VER" -lt 24 ]]; then
+      echo "--- Updating conda (${CONDA_CMD} $(${CONDA_CMD} --version 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+') is too old for macOS $(sw_vers -productVersion))..."
+      ${CONDA_CMD} update -y -n base -c conda-forge conda 2>&1 | tail -3
+      echo ""
+    fi
 
     # Create env with Python 3.10 and GNU parallel.
     # --override-channels ensures only conda-forge is used.
