@@ -110,23 +110,13 @@ This runs all three DeepVariant steps on a 10kb region of chr20, confirms Metal 
 
 ### Uninstalling
 
-To completely remove DeepVariant:
+Run the uninstall script:
 
 ```bash
-# 1. Remove install directory (binaries, models, scripts, venv)
-rm -rf ~/.deepvariant
-
-# 2. Remove conda environment (if conda was used)
-conda env remove -n deepvariant
-
-# 3. Remove shell profile entries — edit ~/.zshrc and delete the lines:
-#    # DeepVariant macOS ARM64
-#    export DEEPVARIANT_HOME=...
-#    export PATH=...
-
-# 4. Remove quicktest data (if you ran the quicktest)
-rm -rf ~/deepvariant-quicktest
+deepvariant-uninstall
 ```
+
+This removes the install directory, conda/venv environment, shell profile entries, and quicktest data. It shows what will be removed and asks for confirmation before proceeding.
 
 ---
 

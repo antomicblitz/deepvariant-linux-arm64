@@ -354,7 +354,26 @@ else
 fi
 chmod +x "${DEEPVARIANT_HOME}/bin/deepvariant-download-model"
 
-echo "  Created: run_deepvariant, run_deeptrio, deepvariant-download-model"
+# Copy uninstall script
+UNINSTALL_SRC="$(cd "$(dirname "$0")" && pwd)/scripts/uninstall.sh"
+if [[ -f "${UNINSTALL_SRC}" ]]; then
+  cp "${UNINSTALL_SRC}" "${DEEPVARIANT_HOME}/scripts/uninstall.sh"
+else
+  # Download from GitHub if running via curl pipe
+  curl -fsSL "https://raw.githubusercontent.com/antomicblitz/deepvariant-macos-arm64-metal/r1.9/scripts/uninstall.sh" \
+    -o "${DEEPVARIANT_HOME}/scripts/uninstall.sh"
+fi
+chmod +x "${DEEPVARIANT_HOME}/scripts/uninstall.sh"
+
+# Create uninstall wrapper in bin/
+cat > "${DEEPVARIANT_HOME}/bin/deepvariant-uninstall" << 'WRAPPER'
+#!/bin/bash
+DV_HOME="${DEEPVARIANT_HOME:-$HOME/.deepvariant}"
+exec "${DV_HOME}/scripts/uninstall.sh" "$@"
+WRAPPER
+chmod +x "${DEEPVARIANT_HOME}/bin/deepvariant-uninstall"
+
+echo "  Created: run_deepvariant, run_deeptrio, deepvariant-download-model, deepvariant-uninstall"
 
 ################################################################################
 # Download models
