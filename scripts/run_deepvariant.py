@@ -53,6 +53,11 @@ import tensorflow as tf
 
 FLAGS = flags.FLAGS
 
+# Allow overriding the install location via environment variable.
+# Defaults to /opt/deepvariant for Docker compatibility.
+_DV_HOME = os.environ.get('DEEPVARIANT_HOME', '/opt/deepvariant')
+_DV_BIN = os.path.join(_DV_HOME, 'bin')
+
 
 class ModelType(enum.Enum):
   WGS = 'WGS'
@@ -273,12 +278,12 @@ _REPORT_TITLE = flags.DEFINE_string(
 )
 
 MODEL_TYPE_MAP = {
-    ModelType.WGS: '/opt/models/wgs',
-    ModelType.WES: '/opt/models/wes',
-    ModelType.PACBIO: '/opt/models/pacbio',
-    ModelType.ONT_R104: '/opt/models/ont_r104',
-    ModelType.HYBRID_PACBIO_ILLUMINA: '/opt/models/hybrid_pacbio_illumina',
-    ModelType.MASSEQ: '/opt/models/masseq',
+    ModelType.WGS: f'{_DV_HOME}/models/wgs',
+    ModelType.WES: f'{_DV_HOME}/models/wes',
+    ModelType.PACBIO: f'{_DV_HOME}/models/pacbio',
+    ModelType.ONT_R104: f'{_DV_HOME}/models/ont_r104',
+    ModelType.HYBRID_PACBIO_ILLUMINA: f'{_DV_HOME}/models/hybrid_pacbio_illumina',
+    ModelType.MASSEQ: f'{_DV_HOME}/models/masseq',
 }
 
 
@@ -292,19 +297,19 @@ class SmallModelConfig:
 
 SMALL_MODEL_CONFIG_BY_MODEL_TYPE = {
     ModelType.WGS: SmallModelConfig(
-        small_model_checkpoint='/opt/smallmodels/wgs',
+        small_model_checkpoint=f'{_DV_HOME}/smallmodels/wgs',
         snp_gq_threshold=20,
         indel_gq_threshold=28,
         vaf_context_window=51,
     ),
     ModelType.PACBIO: SmallModelConfig(
-        small_model_checkpoint='/opt/smallmodels/pacbio',
+        small_model_checkpoint=f'{_DV_HOME}/smallmodels/pacbio',
         snp_gq_threshold=15,
         indel_gq_threshold=16,
         vaf_context_window=51,
     ),
     ModelType.ONT_R104: SmallModelConfig(
-        small_model_checkpoint='/opt/smallmodels/ont_r104',
+        small_model_checkpoint=f'{_DV_HOME}/smallmodels/ont_r104',
         snp_gq_threshold=9,
         indel_gq_threshold=17,
         vaf_context_window=51,
@@ -448,7 +453,7 @@ def make_examples_command(
       'time',
       'seq 0 {} |'.format(_NUM_SHARDS.value - 1),
       'parallel -q --halt 2 --line-buffer',
-      '/opt/deepvariant/bin/make_examples',
+      f'{_DV_BIN}/make_examples',
   ]
   command.extend(['--mode', 'calling'])
   command.extend(['--ref', '"{}"'.format(ref)])
@@ -530,7 +535,7 @@ def call_variants_command(
 ) -> tuple[str, Optional[str]]:
   """Returns a call_variants (command, logfile) for subprocess."""
   binary_name = 'call_variants'
-  command = ['time', f'/opt/deepvariant/bin/{binary_name}']
+  command = ['time', f'{_DV_BIN}/{binary_name}']
   command.extend(['--outfile', '"{}"'.format(outfile)])
   command.extend(['--examples', '"{}"'.format(examples)])
   command.extend(['--checkpoint', '"{}"'.format(model_ckpt)])
@@ -564,7 +569,7 @@ def postprocess_variants_command(
     # WES does not benefit from multiprocessing.
     if ModelType(_MODEL_TYPE.value) == ModelType.WES:
       cpus = 0
-  command = ['time', '/opt/deepvariant/bin/postprocess_variants']
+  command = ['time', f'{_DV_BIN}/postprocess_variants']
   command.extend(['--ref', '"{}"'.format(ref)])
   command.extend(['--infile', '"{}"'.format(infile)])
   command.extend(['--outfile', '"{}"'.format(outfile)])
@@ -596,7 +601,7 @@ def vcf_stats_report_command(
   Returns:
     [command string for subprocess, optional log directory path]
   """
-  command = ['time', '/opt/deepvariant/bin/vcf_stats_report']
+  command = ['time', f'{_DV_BIN}/vcf_stats_report']
   command.extend(['--input_vcf', '"{}"'.format(vcf_path)])
   outfile_base = trim_suffix(trim_suffix(vcf_path, '.gz'), '.vcf')
   command.extend(['--outfile_base', '"{}"'.format(outfile_base)])
@@ -617,7 +622,7 @@ def runtime_by_region_vis_command(
       _LOGGING_DIR.value, 'make_examples_runtime_by_region_report.html'
   )
 
-  command = ['time', '/opt/deepvariant/bin/runtime_by_region_vis']
+  command = ['time', f'{_DV_BIN}/runtime_by_region_vis']
   command.extend(['--input', '"{}"'.format(runtime_by_region_path)])
   command.extend(['--title', '"{}"'.format(title)])
   command.extend(['--output', '"{}"'.format(runtime_report)])

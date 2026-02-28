@@ -50,6 +50,11 @@ import tensorflow as tf
 
 FLAGS = flags.FLAGS
 
+# Allow overriding the install location via environment variable.
+# Defaults to /opt/deepvariant for Docker compatibility.
+_DV_HOME = os.environ.get('DEEPVARIANT_HOME', '/opt/deepvariant')
+_DV_BIN = os.path.join(_DV_HOME, 'bin')
+
 
 # Required flags.
 _MODEL_TYPE = flags.DEFINE_enum(
@@ -321,14 +326,14 @@ _VCF_STATS_REPORT = flags.DEFINE_boolean(
 )
 
 MODEL_TYPE_MAP = {
-    'WGS_child': '/opt/models/deeptrio/wgs/child',
-    'WGS_parent': '/opt/models/deeptrio/wgs/parent',
-    'WES_child': '/opt/models/deeptrio/wes/child',
-    'WES_parent': '/opt/models/deeptrio/wes/parent',
-    'PACBIO_child': '/opt/models/deeptrio/pacbio/child',
-    'PACBIO_parent': '/opt/models/deeptrio/pacbio/parent',
-    'ONT_child': '/opt/models/deeptrio/ont/child',
-    'ONT_parent': '/opt/models/deeptrio/ont/parent',
+    'WGS_child': f'{_DV_HOME}/models/deeptrio/wgs/child',
+    'WGS_parent': f'{_DV_HOME}/models/deeptrio/wgs/parent',
+    'WES_child': f'{_DV_HOME}/models/deeptrio/wes/child',
+    'WES_parent': f'{_DV_HOME}/models/deeptrio/wes/parent',
+    'PACBIO_child': f'{_DV_HOME}/models/deeptrio/pacbio/child',
+    'PACBIO_parent': f'{_DV_HOME}/models/deeptrio/pacbio/parent',
+    'ONT_child': f'{_DV_HOME}/models/deeptrio/ont/child',
+    'ONT_parent': f'{_DV_HOME}/models/deeptrio/ont/parent',
 }
 
 
@@ -342,20 +347,20 @@ class SmallModelConfig:
 
 SMALL_MODEL_CONFIG_BY_MODEL_TYPE = {
     'WGS': SmallModelConfig(
-        small_model_path_child='/opt/smallmodels/deeptrio/wgs/child',
-        small_model_path_parent='/opt/smallmodels/deeptrio/wgs/parent',
+        small_model_path_child=f'{_DV_HOME}/smallmodels/deeptrio/wgs/child',
+        small_model_path_parent=f'{_DV_HOME}/smallmodels/deeptrio/wgs/parent',
         indel_gq_threshold=29,
         snp_gq_threshold=15,
     ),
     'PACBIO': SmallModelConfig(
-        small_model_path_child='/opt/smallmodels/deeptrio/pacbio/child',
-        small_model_path_parent='/opt/smallmodels/deeptrio/pacbio/parent',
+        small_model_path_child=f'{_DV_HOME}/smallmodels/deeptrio/pacbio/child',
+        small_model_path_parent=f'{_DV_HOME}/smallmodels/deeptrio/pacbio/parent',
         indel_gq_threshold=25,
         snp_gq_threshold=20,
     ),
     'ONT': SmallModelConfig(
-        small_model_path_child='/opt/smallmodels/deeptrio/ont/child',
-        small_model_path_parent='/opt/smallmodels/deeptrio/ont/parent',
+        small_model_path_child=f'{_DV_HOME}/smallmodels/deeptrio/ont/child',
+        small_model_path_parent=f'{_DV_HOME}/smallmodels/deeptrio/ont/parent',
         indel_gq_threshold=10,
         snp_gq_threshold=15,
     ),
@@ -582,7 +587,7 @@ def _make_examples_command(
       'time',
       'seq 0 {} |'.format(_NUM_SHARDS.value - 1),
       'parallel -q --halt 2 --line-buffer',
-      '/opt/deepvariant/bin/deeptrio/make_examples',
+      f'{_DV_BIN}/deeptrio/make_examples',
   ]
   if candidate_partition_mode == CandidatePartitionCommand.SWEEP:
     command.extend(['--mode', 'candidate_sweep'])
@@ -722,7 +727,7 @@ def call_variants_command(
 ) -> str:
   """Returns a call_variants command for subprocess.check_call."""
   binary_name = 'call_variants'
-  command = ['time', f'/opt/deepvariant/bin/{binary_name}']
+  command = ['time', f'{_DV_BIN}/{binary_name}']
   command.extend(['--outfile', '"{}"'.format(outfile)])
   command.extend(['--examples', '"{}"'.format(examples)])
   command.extend(['--checkpoint', '"{}"'.format(model_ckpt)])
@@ -753,7 +758,7 @@ def postprocess_variants_command(
     gvcf_outfile=None,
 ):
   """Returns a postprocess_variants command for subprocess.check_call."""
-  command = ['time', '/opt/deepvariant/bin/postprocess_variants']
+  command = ['time', f'{_DV_BIN}/postprocess_variants']
   command.extend(['--ref', '"{}"'.format(ref)])
   command.extend(['--infile', '"{}"'.format(infile)])
   command.extend(['--outfile', '"{}"'.format(outfile)])
@@ -796,7 +801,7 @@ def vcf_stats_report_command(vcf_path: str) -> str:
   Returns:
     command string for subprocess
   """
-  command = ['time', '/opt/deepvariant/bin/vcf_stats_report']
+  command = ['time', f'{_DV_BIN}/vcf_stats_report']
   command.extend(['--input_vcf', '"{}"'.format(vcf_path)])
   outfile_base = trim_suffix(trim_suffix(vcf_path, '.gz'), '.vcf')
   command.extend(['--outfile_base', '"{}"'.format(outfile_base)])
@@ -810,7 +815,7 @@ def runtime_by_region_vis_command(runtime_by_region_path: str) -> str:
       _LOGGING_DIR.value, 'make_examples_runtime_by_region_report.html'
   )
 
-  command = ['time', '/opt/deepvariant/bin/runtime_by_region_vis']
+  command = ['time', f'{_DV_BIN}/runtime_by_region_vis']
   command.extend(['--input', '"{}"'.format(runtime_by_region_path)])
   command.extend(['--title', '"{}"'.format('DeepTrio')])
   command.extend(['--output', '"{}"'.format(runtime_report)])

@@ -16,7 +16,57 @@ DeepVariant supports germline variant-calling in diploid organisms. For full doc
 
 ---
 
-## Quick Start
+## Quick Install (Pre-built Binaries)
+
+Install pre-built binaries with a single command. No build tools required.
+
+### Prerequisites
+
+- **macOS** on Apple Silicon (M1/M2/M3/M4)
+- **Python 3.10** — `brew install python@3.10`
+
+### One-line Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/antomicblitz/deepvariant-osx_arm64/r1.9/install.sh | bash
+```
+
+This downloads pre-built binaries, creates a Python venv with Metal GPU support, and downloads the WGS model. Customize with environment variables:
+
+```bash
+# Install to a custom location
+DEEPVARIANT_HOME=/path/to/dir curl -fsSL ... | bash
+
+# Download specific models (WGS WES PACBIO ONT_R104 HYBRID MASSEQ ALL NONE)
+MODEL_TYPES="WGS WES PACBIO" curl -fsSL ... | bash
+
+# Skip venv creation (if you have your own)
+SKIP_VENV=1 curl -fsSL ... | bash
+```
+
+After installation, open a new terminal and run:
+
+```bash
+run_deepvariant \
+  --model_type=WGS \
+  --ref=reference.fasta \
+  --reads=input.bam \
+  --output_vcf=output.vcf \
+  --num_shards=$(sysctl -n hw.ncpu)
+```
+
+Download additional models any time:
+
+```bash
+deepvariant-download-model WES PACBIO ONT_R104
+deepvariant-download-model WGS --deeptrio
+```
+
+---
+
+## Build from Source
+
+If you prefer to build from source instead of using pre-built binaries:
 
 ### Prerequisites
 
@@ -36,23 +86,18 @@ git checkout r1.9
 
 ### 2. Install Build Prerequisites
 
-This script installs Homebrew packages, Bazel 5.3.0, abseil-cpp, CLIF C++ runtime, and clones/configures TensorFlow 2.13.1 source:
-
 ```bash
 ./build-prereq-macos.sh
 ```
 
-This runs `run-prereq-macos.sh` automatically to install Python packages and TensorFlow with Metal GPU support.
+This installs Homebrew packages, Bazel 5.3.0, abseil-cpp, CLIF C++ runtime, clones/configures TensorFlow 2.13.1 source, and runs `run-prereq-macos.sh` for Python packages.
 
 ### 3. Patch zlib in Bazel Cache (Required After `bazel clean`)
 
 After the first Bazel build starts downloading external deps, you must patch zlib's `zutil.h`. This is needed because modern macOS defines `TARGET_OS_MAC`, which causes zlib to set `fdopen` to `NULL`:
 
 ```bash
-# Find the cached zutil.h (path may vary — check your Bazel output base)
 ZUTIL=$(find $(bazel info output_base)/external/zlib -name zutil.h 2>/dev/null)
-
-# Patch: prevent fdopen=NULL on macOS
 gsed -i 's/#if defined(MACOS) || defined(TARGET_OS_MAC)/#if defined(MACOS) \&\& !defined(__APPLE__)/' "$ZUTIL"
 ```
 
@@ -65,50 +110,24 @@ source settings.sh
 ./build_release_binaries.sh
 ```
 
-This builds all DeepVariant and DeepTrio binaries. The build uses `--config=macos` automatically on Darwin.
-
-### 5. Set Up a Python Virtual Environment (Recommended)
-
-A clean venv avoids package conflicts between `tensorflow-macos` and other TensorFlow packages:
+### 5. Set Up a Python Virtual Environment
 
 ```bash
 python3.10 -m venv ~/dv-venv
 source ~/dv-venv/bin/activate
-
-# Install runtime deps
-pip install tensorflow-macos==2.13.1
-pip install tensorflow-metal==1.0.0
-pip install --no-deps tensorflow-hub==0.14.0
-pip install --no-deps tensorflow-model-optimization==0.7.5
-pip install --no-deps tf-models-official==2.13.1
-
-# Install remaining Python deps (from run-prereq-macos.sh)
-pip install absl-py protobuf==4.21.9 pysam==0.20.0 \
-  contextlib2 etils typing_extensions importlib_resources \
-  sortedcontainers==2.1.0 intervaltree==3.1.0 ml_collections \
-  clu==0.0.9 joblib psutil pandas==1.3.4 Pillow==9.5.0 \
-  scikit-learn==1.0.2 jax==0.4.35 opencv-python-headless
+pip install tensorflow-macos==2.13.1 tensorflow-metal==1.0.0
+pip install --no-deps tensorflow-hub==0.14.0 tensorflow-model-optimization==0.7.5 tf-models-official==2.13.1
+pip install absl-py protobuf==4.21.9 pysam==0.20.0 contextlib2 etils typing_extensions \
+  importlib_resources sortedcontainers==2.1.0 intervaltree==3.1.0 ml_collections \
+  clu==0.0.9 joblib psutil pandas==1.3.4 Pillow==9.5.0 scikit-learn==1.0.2 \
+  jax==0.4.35 opencv-python-headless markupsafe==2.0.1
 ```
 
-### 6. Verify
+### 6. Package for Distribution (Optional)
 
 ```bash
-# Activate your venv first
-source ~/dv-venv/bin/activate
-
-# Check binaries
-python3 bazel-bin/deepvariant/call_variants.zip --help
-python3 bazel-bin/deepvariant/make_examples.zip --help
-
-# Verify Metal GPU
-python3 -c "
-import tensorflow as tf
-print('TensorFlow:', tf.__version__)
-for d in tf.config.list_physical_devices():
-    print(f'  {d.device_type}: {d.name}')
-gpus = tf.config.list_physical_devices('GPU')
-print(f'Metal GPU: {\"ENABLED\" if gpus else \"NOT AVAILABLE\"} ({len(gpus)} device(s))')
-"
+./scripts/package_release.sh           # create tarball only
+./scripts/package_release.sh --release # create tarball + GitHub Release
 ```
 
 ---
