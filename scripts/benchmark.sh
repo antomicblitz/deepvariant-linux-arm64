@@ -5,11 +5,10 @@
 # against published reference metrics from GCP instances. Optionally evaluates
 # accuracy with hap.py against NIST truth sets.
 #
-# TensorFlow Metal GPU is available on all Apple Silicon Macs but provides
-# minimal speedup for call_variants in v1.9 due to the "small model"
-# optimization that pre-screens easy variants on CPU. The primary value of
-# running on Apple Silicon is convenience and per-core efficiency, not GPU
-# acceleration.
+# TensorFlow Metal GPU is available on all Apple Silicon Macs and provides a
+# ~4.25x speedup for call_variants inference (measured: 224s GPU vs 950s CPU-only
+# on M1 Max, HG003 chr20). The Metal GPU accelerates the CNN inference for
+# variant classification.
 #
 # Usage:
 #   bash scripts/benchmark.sh [--runs N] [--skip-happy] [--shards N]
@@ -167,12 +166,11 @@ print(len(gpus))
 " 2>/dev/null || echo 0)
 
 if [[ "$GPU_COUNT" -ge 1 ]]; then
-  pass "Metal GPU available ($GPU_COUNT device) — used by TF for call_variants inference"
+  pass "Metal GPU available ($GPU_COUNT device) — ~4.25x speedup for call_variants"
 else
-  echo "  Metal GPU: not detected (CPU-only inference)"
+  echo "  WARNING: Metal GPU not detected. call_variants will be ~4x slower."
+  echo "  Install tensorflow-metal for GPU acceleration."
 fi
-echo "  Note: Metal GPU provides minimal speedup for call_variants in v1.9"
-echo "        due to the 'small model' optimization that pre-screens on CPU."
 echo ""
 
 # ── Pipeline runner ───────────────────────────────────────────────────────────

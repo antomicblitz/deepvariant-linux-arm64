@@ -10,9 +10,10 @@ Key findings from benchmarking on M1 Max:
   - make_examples: Apple Silicon matches or beats an equivalent-core GCP
     instance (~1.06x), showing strong per-core efficiency for this
     embarrassingly parallel stage.
-  - call_variants: Metal GPU provides no measurable speedup in v1.9 due to
-    the "small model" optimization that pre-screens easy variants on CPU.
-    The M1 Max is slower than estimated GCP 16-vCPU for this stage.
+  - call_variants: Metal GPU provides a 4.25x speedup over CPU-only on the
+    same hardware (224s vs 950s). Despite the v1.9 "small model" optimization
+    that pre-screens easy variants on CPU, GPU still accelerates the full CNN
+    inference for hard sites significantly.
   - Overall: Apple Silicon is competitive on a per-core basis for the
     CPU-bound stages, but cannot match cloud instances with many more cores.
 
