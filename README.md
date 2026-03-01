@@ -294,7 +294,7 @@ bash scripts/benchmark.sh --skip-accuracy
 
 ### Why Run DeepVariant on Apple Silicon?
 
-The alternative is **not running it at all**. The official DeepVariant Docker image [crashes on Apple Silicon](https://github.com/google/deepvariant/issues/657) because TensorFlow's binaries require AVX instructions, which Rosetta 2 cannot translate inside Docker's Linux VM. QEMU-based emulation technically works but is 10-20x slower and impractical. There is no official macOS build. Before this fork, Mac users needed a remote Linux server.
+The alternative is **not running it natively at all, and without GPU acceleration**. The official DeepVariant Docker image [crashes on Apple Silicon](https://github.com/google/deepvariant/issues/657) because TensorFlow's binaries require AVX instructions, which Rosetta 2 cannot translate inside Docker's Linux VM. QEMU-based emulation technically works but is 10-20x slower and impractical. There is no official macOS build. Before this fork, Mac users needed a remote Linux server.
 
 With this native build, Apple Silicon Macs become viable for:
 
