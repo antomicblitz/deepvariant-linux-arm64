@@ -2,8 +2,8 @@
 # DeepVariant v1.9 — Performance Benchmark (macOS ARM64, Apple Silicon)
 #
 # Benchmarks DeepVariant on HG003 chr20, comparing your Apple Silicon Mac
-# against published reference metrics from GCP instances. Optionally evaluates
-# accuracy with hap.py against NIST truth sets.
+# against published reference metrics from GCP instances. Evaluates accuracy
+# against NIST/GIAB truth sets using rtg-tools vcfeval (native) or hap.py (Docker).
 #
 # TensorFlow Metal GPU is available on all Apple Silicon Macs and provides a
 # ~4.25x speedup for call_variants inference (measured: 224s GPU vs 950s CPU-only
@@ -11,7 +11,7 @@
 # variant classification.
 #
 # Usage:
-#   bash scripts/benchmark.sh [--runs N] [--skip-happy] [--shards N]
+#   bash scripts/benchmark.sh [--runs N] [--skip-accuracy] [--shards N]
 #                              [--batch-size N] [--output-dir DIR]
 
 set -euo pipefail
@@ -24,7 +24,7 @@ caffeinate -i -w $$ &
 # ── Defaults ──────────────────────────────────────────────────────────────────
 DV_HOME="${DEEPVARIANT_HOME:-$HOME/.deepvariant}"
 NUM_RUNS=1
-SKIP_HAPPY=false
+SKIP_ACCURACY=false
 SHARDS=$(sysctl -n hw.perflevel0.logicalcpu 2>/dev/null || sysctl -n hw.logicalcpu)
 BATCH_SIZE=1024
 OUTPUT_DIR="$HOME/deepvariant-benchmark"
@@ -47,7 +47,8 @@ and compares against published GCP reference metrics.
 
 Options:
   --runs N            Number of runs for averaging (default: 1)
-  --skip-happy        Skip hap.py accuracy evaluation (no Docker needed)
+  --skip-accuracy     Skip accuracy evaluation (no rtg-tools or Docker needed)
+  --skip-happy        Alias for --skip-accuracy (backward compat)
   --shards N          Parallel shards for make_examples (default: perf cores)
   --batch-size N      Batch size for call_variants (default: 1024)
   --output-dir DIR    Output directory (default: ~/deepvariant-benchmark)
@@ -58,11 +59,12 @@ EOF
 
 while (( "$#" )); do
   case "$1" in
-    --runs)        NUM_RUNS="$2"; shift 2 ;;
-    --skip-happy)  SKIP_HAPPY=true; shift ;;
-    --shards)      SHARDS="$2"; shift 2 ;;
-    --batch-size)  BATCH_SIZE="$2"; shift 2 ;;
-    --output-dir)  OUTPUT_DIR="$2"; shift 2 ;;
+    --runs)           NUM_RUNS="$2"; shift 2 ;;
+    --skip-accuracy)  SKIP_ACCURACY=true; shift ;;
+    --skip-happy)     SKIP_ACCURACY=true; shift ;;
+    --shards)         SHARDS="$2"; shift 2 ;;
+    --batch-size)     BATCH_SIZE="$2"; shift 2 ;;
+    --output-dir)     OUTPUT_DIR="$2"; shift 2 ;;
     --help)        usage ;;
     *)             echo "Unknown option: $1"; usage ;;
   esac
@@ -114,7 +116,7 @@ echo "  Output dir:   $OUTPUT_DIR"
 echo "  Shards:       $SHARDS"
 echo "  Batch size:   $BATCH_SIZE"
 echo "  Runs:         $NUM_RUNS"
-echo "  hap.py:       $(if $SKIP_HAPPY; then echo SKIP; else echo YES; fi)"
+echo "  Accuracy:     $(if $SKIP_ACCURACY; then echo SKIP; else echo YES; fi)"
 echo ""
 
 # ── [ 1 ] Download data ──────────────────────────────────────────────────────
@@ -146,8 +148,8 @@ BAM_URL="https://storage.googleapis.com/deepvariant/case-study-testdata"
 download_file "${BAM_URL}/HG003.novaseq.pcr-free.35x.dedup.grch38_no_alt.chr20.bam" "$BAM"
 download_file "${BAM_URL}/HG003.novaseq.pcr-free.35x.dedup.grch38_no_alt.chr20.bam.bai" "$BAM_BAI"
 
-# Truth sets (for hap.py)
-if [[ "$SKIP_HAPPY" != "true" ]]; then
+# GIAB truth sets (for accuracy evaluation)
+if [[ "$SKIP_ACCURACY" != "true" ]]; then
   GIAB_FTP="ftp://ftp-trace.ncbi.nlm.nih.gov/giab/ftp/release/AshkenazimTrio/HG003_NA24149_father/NISTv4.2.1/GRCh38"
   download_file "${GIAB_FTP}/HG003_GRCh38_1_22_v4.2.1_benchmark.vcf.gz" "$TRUTH_VCF"
   download_file "${GIAB_FTP}/HG003_GRCh38_1_22_v4.2.1_benchmark.vcf.gz.tbi" "$TRUTH_VCF_TBI"
@@ -255,36 +257,178 @@ print(json.dumps(entry))
 " >> "$RESULTS_JSONL"
 }
 
-# ── hap.py runner ─────────────────────────────────────────────────────────────
-run_happy() {
-  banner "[ 4 ] hap.py accuracy evaluation"
+# ── Published reference accuracy (DeepVariant WGS case study, HG003 chr20) ──
+# From docs/deepvariant-case-study.md — these are the targets to match.
+REF_SNP_RECALL=0.999682; REF_SNP_PRECISION=0.999336; REF_SNP_F1=0.999509
+REF_INDEL_RECALL=0.993437; REF_INDEL_PRECISION=0.995645; REF_INDEL_F1=0.994540
 
-  if ! command -v docker &>/dev/null; then
-    echo "  WARNING: Docker not found. Skipping hap.py evaluation."
-    echo "  Install Docker Desktop for Mac to enable accuracy benchmarking."
-    return 0
+# ── Accuracy table printer ────────────────────────────────────────────────────
+print_accuracy_table() {
+  local json_file="$1"
+  python3 << PYEOF
+import json, sys
+
+with open('$json_file') as f:
+    data = json.load(f)
+
+ref = {
+    'SNP':   {'Recall': $REF_SNP_RECALL,   'Precision': $REF_SNP_PRECISION,   'F1': $REF_SNP_F1},
+    'INDEL': {'Recall': $REF_INDEL_RECALL, 'Precision': $REF_INDEL_PRECISION, 'F1': $REF_INDEL_F1}
+}
+
+print()
+print('  %-7s  %-10s  %-10s  %-10s  %-8s  %-8s  %-8s' % (
+    'Type', 'TP', 'FP', 'FN', 'Recall', 'Precision', 'F1'))
+print('  ' + '-' * 69)
+
+any_deviation = False
+for vtype in ['SNP', 'INDEL']:
+    if vtype not in data:
+        continue
+    d = data[vtype]
+    recall = d.get('METRIC.Recall', d.get('Recall', 0))
+    precision = d.get('METRIC.Precision', d.get('Precision', 0))
+    f1 = d.get('METRIC.F1_Score', d.get('F1', 0))
+    tp = d.get('TRUTH.TP', d.get('TP', 0))
+    fp = d.get('QUERY.FP', d.get('FP', 0))
+    fn = d.get('TRUTH.FN', d.get('FN', 0))
+
+    print('  %-7s  %-10d  %-10d  %-10d  %.6f  %.6f  %.6f' % (
+        vtype, tp, fp, fn, recall, precision, f1))
+
+    # Check for significant deviation from published reference
+    r = ref.get(vtype, {})
+    if r and abs(f1 - r['F1']) > 0.005:
+        any_deviation = True
+
+print()
+print('  Published reference (GCP x86_64):')
+for vtype in ['SNP', 'INDEL']:
+    r = ref[vtype]
+    print('  %-7s  %10s  %10s  %10s  %.6f  %.6f  %.6f' % (
+        vtype, '', '', '', r['Recall'], r['Precision'], r['F1']))
+
+if any_deviation:
+    print()
+    print('  WARNING: F1 deviates >0.5%% from published reference!')
+    sys.exit(1)
+else:
+    print()
+    print('  Accuracy matches published reference (within 0.5%%).')
+PYEOF
+}
+
+# ── rtg vcfeval runner (native, no Docker) ────────────────────────────────────
+patch_rtg_arm64() {
+  # rtg-tools 3.11 launcher script rejects ARM64 (only checks for x86_64).
+  # The tool is pure Java and works fine on ARM64. Patch the check if needed.
+  local rtg_script
+  rtg_script="$(command -v rtg)"
+  if [[ -n "$rtg_script" ]] && grep -q '"$(uname -m)" != "x86_64"' "$rtg_script" 2>/dev/null; then
+    if ! grep -q 'arm64' "$rtg_script" 2>/dev/null; then
+      echo "  Patching rtg launcher for ARM64 compatibility ..."
+      sed -i.bak 's|"$(uname -m)" != "x86_64"|"$(uname -m)" != "x86_64" \]\] \&\& [[ "$(uname -m)" != "arm64" \]\] \&\& [[ "$(uname -m)" != "aarch64"|' "$rtg_script"
+    fi
   fi
+}
 
-  # Check if Docker daemon is running
-  if ! docker info &>/dev/null; then
-    echo "  WARNING: Docker daemon not running. Skipping hap.py evaluation."
-    echo "  Start Docker Desktop and re-run with: bash scripts/benchmark.sh --skip-happy"
-    return 0
-  fi
+run_vcfeval() {
+  local vcf_to_eval="$1"
+  local eval_dir="$OUTPUT_DIR/vcfeval"
+  local ref_sdf="$DATA_DIR/reference/GRCh38_no_alt_analysis_set.sdf"
 
-  # Find a VCF to evaluate
-  local vcf_to_eval=""
-  if [[ -f "$OUTPUT_DIR/runs/run_1/output.vcf.gz" ]]; then
-    vcf_to_eval="$OUTPUT_DIR/runs/run_1/output.vcf.gz"
+  # Ensure rtg works on ARM64
+  patch_rtg_arm64
+
+  # Build SDF from reference (one-time, cached)
+  if [[ ! -d "$ref_sdf" ]]; then
+    info "Building reference SDF for vcfeval (one-time) ..."
+    rtg format -o "$ref_sdf" "$REF"
   else
-    echo "  WARNING: No output VCF found. Skipping hap.py."
-    return 0
+    echo "  cached: reference SDF"
   fi
 
+  # Clean previous output (rtg refuses to overwrite)
+  rm -rf "$eval_dir"
+
+  info "Running rtg vcfeval ..."
+  rtg vcfeval \
+    --baseline "$TRUTH_VCF" \
+    --calls "$vcf_to_eval" \
+    --template "$ref_sdf" \
+    --output "$eval_dir" \
+    --evaluation-regions "$TRUTH_BED" \
+    --region chr20 \
+    --output-mode split \
+    2>&1 | tee "$eval_dir.log"
+
+  if [[ -f "$eval_dir/summary.txt" ]]; then
+    pass "rtg vcfeval completed"
+    cat "$eval_dir/summary.txt"
+
+    # Parse per-type metrics from ROC files (summary.txt is aggregated only)
+    # ROC format: score  TP_baseline  FP  TP_call  FN  Precision  Sensitivity  F-measure
+    # The last data row gives the all-pass (lowest threshold) metrics.
+    python3 << PYEOF
+import json, gzip, os
+
+results = {}
+roc_files = {
+    'SNP': os.path.join('$eval_dir', 'snp_roc.tsv.gz'),
+    'INDEL': os.path.join('$eval_dir', 'non_snp_roc.tsv.gz')
+}
+
+for vtype, roc_path in roc_files.items():
+    if not os.path.exists(roc_path):
+        continue
+    last_line = None
+    with gzip.open(roc_path, 'rt') as f:
+        for line in f:
+            if not line.startswith('#'):
+                last_line = line.strip()
+    if last_line:
+        fields = last_line.split('\t')
+        # fields: score, TP_baseline, FP, TP_call, FN, Precision, Sensitivity, F-measure
+        tp_base = int(float(fields[1]))
+        fp = int(float(fields[2]))
+        fn = int(float(fields[4]))
+        precision = float(fields[5])
+        sensitivity = float(fields[6])
+        f_measure = float(fields[7])
+
+        results[vtype] = {
+            'TRUTH.TP': tp_base,
+            'QUERY.FP': fp,
+            'TRUTH.FN': fn,
+            'METRIC.Recall': sensitivity,
+            'METRIC.Precision': precision,
+            'METRIC.F1_Score': f_measure,
+            'Recall': sensitivity,
+            'Precision': precision,
+            'F1': f_measure,
+            'TP': tp_base,
+            'FP': fp,
+            'FN': fn
+        }
+
+with open('$eval_dir/vcfeval_parsed.json', 'w') as f:
+    json.dump(results, f, indent=2)
+print(json.dumps(results, indent=2))
+PYEOF
+    return 0
+  else
+    echo "  WARNING: rtg vcfeval summary not found."
+    return 1
+  fi
+}
+
+# ── hap.py runner (Docker, Rosetta 2 emulation) ──────────────────────────────
+run_happy() {
+  local vcf_to_eval="$1"
   local happy_dir="$OUTPUT_DIR/happy"
   mkdir -p "$happy_dir"
 
-  info "Running hap.py on $(basename "$vcf_to_eval") ..."
+  info "Running hap.py via Docker on $(basename "$vcf_to_eval") ..."
   info "(hap.py runs under Rosetta 2 emulation — this is slow, be patient)"
 
   docker run --rm --platform linux/amd64 \
@@ -305,7 +449,6 @@ run_happy() {
 
   if [[ -f "$happy_dir/happy.output.summary.csv" ]]; then
     pass "hap.py completed"
-    # Parse summary.csv
     python3 -c "
 import csv, json
 results = {}
@@ -320,12 +463,20 @@ with open('$happy_dir/happy.output.summary.csv') as f:
                 'QUERY.FP': int(float(row['QUERY.FP'])),
                 'METRIC.Recall': float(row['METRIC.Recall']),
                 'METRIC.Precision': float(row['METRIC.Precision']),
-                'METRIC.F1_Score': float(row['METRIC.F1_Score'])
+                'METRIC.F1_Score': float(row['METRIC.F1_Score']),
+                'Recall': float(row['METRIC.Recall']),
+                'Precision': float(row['METRIC.Precision']),
+                'F1': float(row['METRIC.F1_Score']),
+                'TP': int(float(row['TRUTH.TP'])),
+                'FP': int(float(row['QUERY.FP'])),
+                'FN': int(float(row['TRUTH.FN']))
             }
 print(json.dumps(results, indent=2))
 " > "$happy_dir/happy_parsed.json"
+    return 0
   else
     echo "  WARNING: hap.py summary not found."
+    return 1
   fi
 }
 
@@ -434,10 +585,16 @@ result = {
     }
 }
 
-# Add hap.py results if available
-if os.path.exists(happy_path):
+# Add accuracy results if available (vcfeval or hap.py)
+accuracy_json = os.environ.get('ACCURACY_JSON', '')
+if accuracy_json and os.path.exists(accuracy_json):
+    with open(accuracy_json) as f:
+        result['accuracy'] = json.loads(f.read())
+    result['accuracy_tool'] = 'vcfeval' if 'vcfeval' in accuracy_json else 'hap.py'
+elif os.path.exists(happy_path):
     with open(happy_path) as f:
-        result['happy'] = json.loads(f.read())
+        result['accuracy'] = json.loads(f.read())
+    result['accuracy_tool'] = 'hap.py'
 
 with open(final_path, 'w') as f:
     json.dump(result, f, indent=2)
@@ -460,13 +617,58 @@ for run in $(seq 1 "$NUM_RUNS"); do
   echo ""
 done
 
-# ── [ 4 ] hap.py ─────────────────────────────────────────────────────────────
-if [[ "$SKIP_HAPPY" != "true" ]]; then
-  run_happy
+# ── [ 4 ] Accuracy evaluation ─────────────────────────────────────────────────
+ACCURACY_JSON=""
+if [[ "$SKIP_ACCURACY" != "true" ]]; then
+  banner "[ 4 ] Accuracy evaluation (vs GIAB HG003 truth set)"
+
+  # Find output VCF from run 1
+  VCF_TO_EVAL="$OUTPUT_DIR/runs/run_1/output.vcf.gz"
+  if [[ ! -f "$VCF_TO_EVAL" ]]; then
+    echo "  WARNING: No output VCF found. Skipping accuracy evaluation."
+  else
+    ACCURACY_DONE=false
+
+    # Try rtg-tools vcfeval first (native, fast)
+    if command -v rtg &>/dev/null; then
+      info "Using rtg-tools vcfeval (native ARM64)"
+      if run_vcfeval "$VCF_TO_EVAL"; then
+        ACCURACY_JSON="$OUTPUT_DIR/vcfeval/vcfeval_parsed.json"
+        ACCURACY_DONE=true
+      fi
+    fi
+
+    # Fall back to Docker hap.py
+    if [[ "$ACCURACY_DONE" != "true" ]]; then
+      if command -v docker &>/dev/null && docker info &>/dev/null 2>&1; then
+        info "rtg-tools not found. Falling back to hap.py via Docker."
+        if run_happy "$VCF_TO_EVAL"; then
+          ACCURACY_JSON="$OUTPUT_DIR/happy/happy_parsed.json"
+          ACCURACY_DONE=true
+        fi
+      fi
+    fi
+
+    # Neither available
+    if [[ "$ACCURACY_DONE" != "true" ]]; then
+      echo ""
+      echo "  WARNING: No accuracy evaluation tool available."
+      echo "  Install one of:"
+      echo "    brew tap brewsci/bio && brew install rtg-tools   (recommended, native)"
+      echo "    Install Docker Desktop for Mac                   (hap.py via Rosetta 2)"
+    fi
+
+    # Print accuracy comparison table
+    if [[ -n "$ACCURACY_JSON" && -f "$ACCURACY_JSON" ]]; then
+      banner "Accuracy comparison"
+      print_accuracy_table "$ACCURACY_JSON"
+    fi
+  fi
 fi
 
 # ── [ 5 ] Finalize ───────────────────────────────────────────────────────────
 export OUTPUT_DIR
+export ACCURACY_JSON
 finalize_results
 
 echo ""

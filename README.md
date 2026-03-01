@@ -262,6 +262,36 @@ Direct A/B testing (same hardware, same data, `tensorflow-metal` installed vs un
 
 - **Overall:** The M1 Max processes HG003 chr20 in ~8.5 minutes with Metal GPU, or ~21 minutes without. It is competitive on a per-core basis for CPU-bound stages but cannot match cloud instances with many more cores. The 96-core GCP instance is ~5x faster overall, as expected given the 12:1 core ratio.
 
+### Accuracy Validation
+
+We validated variant call accuracy against the [Genome in a Bottle](https://www.nist.gov/programs-projects/genome-bottle) (GIAB) HG003 truth set (NIST v4.2.1) using [rtg-tools vcfeval](https://github.com/RealTimeGenomics/rtg-tools). The ARM64 Metal GPU build produces calls that match the published x86_64 reference accuracy:
+
+| | SNP | | | INDEL | | |
+|---|---|---|---|---|---|---|
+| | **Recall** | **Precision** | **F1** | **Recall** | **Precision** | **F1** |
+| **macOS ARM64 (M1 Max, Metal GPU)** | 0.9963 | 0.9993 | **0.9978** | 0.9948 | 0.9983 | **0.9966** |
+| Published reference (GCP x86_64) | 0.9997 | 0.9993 | 0.9995 | 0.9934 | 0.9956 | 0.9945 |
+
+*Region: chr20. Sample: HG003 (NA24149). Truth set: NIST/GIAB v4.2.1 high-confidence calls. Comparison engine: rtg vcfeval with `--output-mode split`. PASS variants only.*
+
+**Key findings:**
+- All F1 scores are within 0.5% of the published reference -- no meaningful accuracy loss from the ARM64/Metal GPU platform.
+- INDEL F1 is slightly *higher* than the published reference (0.9966 vs 0.9945).
+- 69,904 true-positive SNPs with only 52 false positives; 10,573 true-positive INDELs with only 18 false positives.
+
+Run the accuracy benchmark yourself:
+
+```bash
+# Install rtg-tools (one-time, native ARM64 via Java)
+brew tap brewsci/bio && brew install rtg-tools
+
+# Run full benchmark with accuracy evaluation (~10 min + ~5 GB download on first run)
+bash scripts/benchmark.sh
+
+# Skip accuracy evaluation (performance only)
+bash scripts/benchmark.sh --skip-accuracy
+```
+
 ### Why Run DeepVariant on Apple Silicon?
 
 The alternative is **not running it at all**. The official DeepVariant Docker image [crashes on Apple Silicon](https://github.com/google/deepvariant/issues/657) because TensorFlow's binaries require AVX instructions, which Rosetta 2 cannot translate inside Docker's Linux VM. QEMU-based emulation technically works but is 10-20x slower and impractical. There is no official macOS build. Before this fork, Mac users needed a remote Linux server.
@@ -292,11 +322,11 @@ TensorFlow Metal GPU (`tensorflow-metal`) is installed and provides a **4.25x sp
 The benchmark script automatically prevents macOS from sleeping during the run using `caffeinate`. If you run DeepVariant manually on large datasets, consider wrapping your command with `caffeinate -i` to prevent idle sleep from interrupting long-running stages.
 
 ```bash
-# Full benchmark (downloads ~5 GB of data on first run)
+# Full benchmark with accuracy evaluation (downloads ~5 GB of data on first run)
 bash scripts/benchmark.sh
 
-# Quick run, skip accuracy evaluation
-bash scripts/benchmark.sh --skip-happy --runs 1
+# Performance only, skip accuracy evaluation
+bash scripts/benchmark.sh --skip-accuracy
 
 # Visualize results
 python3 scripts/benchmark_viz.py ~/deepvariant-benchmark/benchmark_results.json --show
