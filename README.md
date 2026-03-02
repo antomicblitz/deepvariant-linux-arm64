@@ -6,7 +6,7 @@
 
 This is a fork of [Google DeepVariant](https://github.com/google/deepvariant) v1.9.0 that builds and runs **natively on macOS with Apple Silicon** (M1, M2, M3, M4) — no Docker, no Rosetta, no remote server.
 
-> **Why this matters:** DeepVariant cannot run on Apple Silicon Macs via Docker. The official Docker image [crashes immediately](https://github.com/google/deepvariant/issues/657) because TensorFlow requires AVX instructions that Rosetta 2 cannot translate inside Docker's Linux VM. There is no official macOS build. Before this fork, Mac users had no local option — they needed a remote Linux x86_64 server. This fork patches the Bazel build system, C++ source, and third-party dependencies to compile and run natively on macOS ARM64 with Apple Clang.
+> **Why this matters:** The official DeepVariant Docker image [crashes on Apple Silicon](https://github.com/google/deepvariant/issues/657) because TensorFlow's x86_64 binaries require AVX instructions that Rosetta 2 cannot translate inside Docker's Linux VM. Rebuilding the image for `linux/arm64` is theoretically possible but yields a CPU-only container with no GPU acceleration — more than 4x slower. There is no official macOS build. Before this fork, the only practical option was a remote Linux server. This fork patches the Bazel build system, C++ source, and third-party dependencies to compile and run natively on macOS ARM64 with Metal GPU acceleration.
 
 ## What is DeepVariant?
 
@@ -294,7 +294,7 @@ bash scripts/benchmark.sh --skip-accuracy
 
 ### Why Run DeepVariant on Apple Silicon?
 
-The alternative is **not running it natively at all, and without GPU acceleration**. The official DeepVariant Docker image [crashes on Apple Silicon](https://github.com/google/deepvariant/issues/657) because TensorFlow's binaries require AVX instructions, which Rosetta 2 cannot translate inside Docker's Linux VM. QEMU-based emulation technically works but is 10-20x slower and impractical. There is no official macOS build. Before this fork, Mac users needed a remote Linux server.
+The official DeepVariant Docker image [crashes on Apple Silicon](https://github.com/google/deepvariant/issues/657) because TensorFlow's x86_64 binaries require AVX instructions, which Rosetta 2 cannot translate inside Docker's Linux VM. Rebuilding the Docker image for `linux/arm64` is theoretically possible but yields a CPU-only container with no GPU acceleration — more than 4x slower than this native build. There is no official macOS build. Before this fork, the only practical option was a remote Linux server.
 
 With this native build, Apple Silicon Macs become viable for:
 
