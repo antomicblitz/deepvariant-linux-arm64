@@ -1,0 +1,10 @@
+contextlib2
+intervaltree
+absl-py
+mock
+numpy
+six
+protobuf==3.19.4
+Pillow==9.5.0
+ipython
+apache-beam

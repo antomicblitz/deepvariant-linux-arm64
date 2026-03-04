@@ -1,0 +1,13 @@
+name: Test
+
+on: [push, pull_request]
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v1
+    - name: Install & Test
+      run: |
+        set -x -e
+        source install.sh
+        bazel test -c opt $BAZEL_FLAGS nucleus/...
