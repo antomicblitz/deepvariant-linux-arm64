@@ -60,14 +60,14 @@ NEEDRESTART_MODE=a apt-get install "${APT_ARGS[@]}" --no-install-recommends \
 # Install dependencies
 apt-get update "${APT_ARGS[@]}"
 NEEDRESTART_MODE=a apt-get install "${APT_ARGS[@]}" \
-    clang-11 \
-    libclang-11-dev \
+    clang-14 \
+    libclang-14-dev \
     libgoogle-glog-dev \
     libgtest-dev \
-    libllvm11 \
-    llvm-11 \
-    llvm-11-dev \
-    llvm-11-linker-tools \
+    libllvm14 \
+    llvm-14 \
+    llvm-14-dev \
+    llvm-14-linker-tools \
     python3-dev \
     zlib1g-dev
 

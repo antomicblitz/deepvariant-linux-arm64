@@ -1,0 +1,8 @@
+.git
+bazel-*
+*.pyc
+__pycache__
+.github
+docs
+*.md
+!settings*.sh

@@ -1,0 +1,4 @@
+# Override default --jobs 128 for machines with limited RAM (16 GB).
+# Each Bazel C++ action can use 2-4 GB, so limit to 4 concurrent jobs.
+build --jobs 4
+build --local_ram_resources=12288

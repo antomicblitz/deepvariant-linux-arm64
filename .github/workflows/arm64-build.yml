@@ -1,0 +1,90 @@
+# CI workflow for building and testing DeepVariant on ARM64.
+#
+# Uses QEMU emulation for the build step (slow but free on GitHub Actions).
+# Accuracy testing requires a self-hosted ARM64 runner (Graviton, Ampere).
+
+name: ARM64 Build & Test
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - 'LICENSE'
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - 'LICENSE'
+  workflow_dispatch:
+
+env:
+  DOCKER_IMAGE: deepvariant-arm64
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-arm64:
+    name: Build ARM64 Docker Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU for ARM64 emulation
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build ARM64 Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.arm64
+          platforms: linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  test-accuracy:
+    name: Accuracy Validation (chr20)
+    needs: build-arm64
+    runs-on: [self-hosted, arm64, linux]
+    if: github.event_name != 'pull_request'
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pull ARM64 Docker image
+        run: |
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      - name: Run HG003 chr20 benchmark
+        run: |
+          bash scripts/benchmark_arm64.sh \
+            --accuracy \
+            --docker-image "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: |
+            ~/deepvariant-benchmark/output/benchmark_result.json
+            ~/deepvariant-benchmark/output/happy_results/

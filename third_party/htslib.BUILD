@@ -221,9 +221,14 @@ genrule(
         echo '#define HAVE_LIBZ 1'
         echo '#define HAVE_MEMORY_H 1'
         echo '#define HAVE_MMAP 1'
-        echo '#define HAVE_POPCNT 1'
-        echo '#define HAVE_SSE4_1 1'
-        echo '#define HAVE_SSSE3 1'
+        # ARM64: use NEON instead of x86 SSE/POPCNT
+        if [ "$(uname -m)" = "aarch64" ]; then
+          echo '#define HAVE_NEON 1'
+        else
+          echo '#define HAVE_POPCNT 1'
+          echo '#define HAVE_SSE4_1 1'
+          echo '#define HAVE_SSSE3 1'
+        fi
         echo '#define HAVE_STDINT_H 1'
         echo '#define HAVE_STDLIB_H 1'
         echo '#define HAVE_STRING_H 1'
