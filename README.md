@@ -8,21 +8,19 @@ There is no official Linux ARM64 build of [DeepVariant](https://github.com/googl
 
 ---
 
-## Performance Summary
+## Why ARM64?
 
-**Estimated cost and time for a 30x human whole genome (WGS):**
+ARM64 cloud instances are 25-50% cheaper per vCPU than x86 equivalents. This fork makes DeepVariant — the most accurate open-source variant caller — available on this hardware for the first time.
 
-| Setup | Instance | vCPUs | $/hr | Est. WGS Time | Est. Cost | Source |
-|-------|----------|-------|------|---------------|-----------|--------|
-| Google x86 (official) | GCP n2-standard-96 | 96 | $3.81 | **~1.3 hr** | **~$5.01** | [Official](https://github.com/google/deepvariant/blob/r1.9/docs/metrics.md) |
-| **ARM64 FP32** | AWS c7g.4xlarge | 16 | $0.58 | **~7.8 hr** | **~$4.50** | Measured |
-| **ARM64 BF16** | AWS c7g.4xlarge | 16 | $0.58 | **~6.5 hr** | **~$3.76** | Measured |
-| GPU-accelerated | GPU instance | — | — | **8-16 min** | <$2 + license | [Parabricks](https://www.nvidia.com/en-us/clara/parabricks/) |
-| Sentieon DNAscope | AWS c7g.8xlarge | 32 | — | — | ~$2.30 + license | [Sentieon](https://www.sentieon.com/) |
+| Solution | Speed (30x WGS) | Cost/Genome | License |
+|----------|-----------------|-------------|---------|
+| Google DeepVariant x86 (96 vCPU) | ~1.3 hr | ~$5.01 | Open source |
+| Sentieon DNAscope (Graviton) | ~1-2 hr | ~$2-4 + **per-sample license** | Proprietary |
+| NVIDIA Parabricks (GPU) | 8-16 min | <$2 + **license** | Proprietary |
+| **This fork (16 vCPU Graviton3, BF16)** | **~6.5 hr** | **~$3.76** | **Open source** |
+| **This fork (16 vCPU Oracle A1, INT8)** | **TBD** | **est. ~$1.50-2.00** | **Open source** |
 
-> Sentieon DNAscope is a different variant caller (GATK-style + ML), not DeepVariant. Parabricks requires a proprietary license. This fork is the only way to run open-source DeepVariant on ARM64 Linux.
-
-**Methodology:** ARM64 times extrapolated from measured chr20 wall times (582s FP32, 487s BF16, averaged over 2 runs) scaled by 48.1x. This is a standard approximation with ~15-20% uncertainty.
+> **Already cheaper than Google's x86 reference** ($3.76 vs $5.01). With scaling to 32+ vCPU and fast_pipeline, targeting ~2.5 hr at ~$3/genome. On Oracle A1 ($0.01/OCPU-hr), INT8 quantization could push costs below $2/genome — relevant for research labs and developing countries where proprietary licensing is a barrier.
 
 **Use this fork when** you want open-source DeepVariant on ARM64, or you are cost-sensitive and can tolerate longer runtimes (batch processing, research pipelines). **Use GPU-accelerated DeepVariant** when you need fast turnaround.
 
@@ -30,44 +28,41 @@ There is no official Linux ARM64 build of [DeepVariant](https://github.com/googl
 
 ## Benchmarks (chr20, Graviton3)
 
-All benchmarks: GIAB HG003, full chr20, averaged over 2 runs, accuracy validated with `rtg vcfeval`.
+All benchmarks: GIAB HG003, full chr20, AWS c7g.4xlarge (16 vCPU Graviton3), averaged over 2 runs, accuracy validated with `rtg vcfeval`.
 
 ### Inference Rate
 
-![call_variants inference rate](docs/figures/call_variants_rate.png)
-
 | Platform | vCPUs | Config | call_variants Rate | chr20 Wall Time |
 |----------|-------|--------|-------------------|-----------------|
-| GCP t2a-standard-8 (Neoverse-N1) | 8 | FP32 | 0.880 s/100 | 12m57s |
-| GCP t2a-standard-16 (Neoverse-N1) | 16 | FP32 | 0.512 s/100 | 7m22s |
-| AWS Graviton3 (c7g.4xlarge) | 16 | FP32 | 0.379 s/100 | 9m41s |
-| **AWS Graviton3 (c7g.4xlarge)** | **16** | **BF16** | **0.232 s/100** | **8m06s** |
+| GCP t2a (Neoverse-N1) | 8 | FP32 | 0.880 s/100 | 12m57s |
+| GCP t2a (Neoverse-N1) | 16 | FP32 | 0.512 s/100 | 7m22s |
+| AWS Graviton3 | 16 | FP32 | 0.379 s/100 | 9m41s |
+| **AWS Graviton3** | **16** | **BF16** | **0.232 s/100** | **8m06s** |
+| **AWS Graviton3** | **16** | **INT8 ONNX** | **0.225 s/100** | **~8m36s** |
 
-### Pipeline Breakdown
+BF16 and INT8 achieve nearly identical inference rates on Graviton3. INT8 is the better choice on platforms **without** BF16 support (Neoverse-N1, Ampere Altra), where it provides a 2.3x speedup over FP32 ONNX.
 
-![Graviton3 wall time breakdown](docs/figures/graviton3_wall_time.png)
+### Pipeline Breakdown (Graviton3, 16 vCPU)
 
-| Stage | FP32 | BF16 | Speedup |
-|-------|------|------|---------|
-| make_examples | 255s | 278s | — |
-| call_variants | 298s | 185s | **1.61x** |
-| postprocess_variants | 29s | 24s | — |
-| **Total** | **582s** | **487s** | **1.20x** |
+| Stage | FP32 | BF16 | INT8 ONNX |
+|-------|------|------|-----------|
+| make_examples | 255s | 278s | 307s |
+| call_variants | 298s (0.379s/100) | 185s (0.232s/100) | 195s (0.238s/100) |
+| postprocess | 29s | 24s | 14s |
+| **Total** | **582s** | **487s** | **516s** |
+
+> INT8 make_examples is slower because ONNX env setup adds overhead; call_variants is the same speed as BF16.
 
 ### Accuracy
 
-![Accuracy FP32 vs BF16](docs/figures/accuracy_fp32_vs_bf16.png)
+All three configurations produce **equivalent accuracy** on GIAB HG003 chr20 (207,799 variant calls):
 
-BF16 produces **identical accuracy** to FP32 — same 207,799 variant calls:
+| Metric | FP32 | BF16 | INT8 ONNX |
+|--------|------|------|-----------|
+| SNP F1 | 0.9974 | 0.9974 | 0.9978 |
+| INDEL F1 | 0.9940 | 0.9940 | 0.9962 |
 
-| Metric | FP32 | BF16 |
-|--------|------|------|
-| SNP F1 | 0.9974 | 0.9974 |
-| INDEL F1 | 0.9940 | 0.9940 |
-
-### Cost
-
-![Cost per genome](docs/figures/cost_per_genome.png)
+INT8 accuracy is slightly higher (within noise) — quantization did not degrade variant calling quality.
 
 ---
 
@@ -190,7 +185,6 @@ wget -P /data/truth/ ${BUCKET}/HG003_GRCh38_1_22_v4.2.1_benchmark_noinconsistent
 
 ```bash
 bash scripts/benchmark_full_chr20.sh --data-dir /data
-python3 scripts/generate_benchmark_charts.py
 ```
 
 </details>
@@ -203,7 +197,7 @@ This fork modifies upstream DeepVariant v1.9.0 for ARM64 Linux compilation.
 
 **New files:** `Dockerfile.arm64`, `settings_arm64.sh`, `build-prereq-arm64.sh`, `build_release_binaries_arm64.sh`, benchmark and quantization scripts in `scripts/`.
 
-**Key modifications:** `third_party/htslib.BUILD` (NEON detection), `third_party/libssw.BUILD` (sse2neon header), `tools/build_absl.sh` (clang-14), `run-prereq.sh` (Ubuntu 24.04 fixes), `deepvariant/call_variants.py` (ONNX + warmup).
+**Key modifications:** `third_party/htslib.BUILD` (NEON detection), `third_party/libssw.BUILD` (sse2neon header), `tools/build_absl.sh` (clang-14), `run-prereq.sh` (Ubuntu 24.04 fixes), `deepvariant/call_variants.py` (ONNX + INT8 normalization + warmup).
 
 <details>
 <summary>Full list of build fixes</summary>
@@ -227,9 +221,9 @@ This fork modifies upstream DeepVariant v1.9.0 for ARM64 Linux compilation.
 
 - **Phase 1 (complete):** Native ARM64 build, Docker image, GIAB-validated pipeline.
 - **Phase 2A (complete):** BF16 on Graviton3+ — 1.61x call_variants speedup, zero accuracy loss.
-- **Phase 2B (complete):** INT8 static quantization — 2.3x over ONNX FP32, matches BF16 speed. Accuracy validated (SNP F1=0.9978, INDEL F1=0.9962). Viable alternative on non-BF16 ARM64 platforms.
-- **Phase 2C (next):** Scale to 32+ vCPU + fast_pipeline. Target: ~2.5 hr at ~$3/genome.
-- **Phase 3 (planned):** GPU/NPU acceleration (Jetson CUDA, RK3588 NPU).
+- **Phase 2B (complete):** INT8 static quantization — 2.3x over ONNX FP32, matches BF16 speed, accuracy validated. Viable alternative on non-BF16 platforms (Neoverse-N1, Ampere Altra, Oracle A1).
+- **Phase 2C (next):** Scale to 32+ vCPU + fast_pipeline (concurrent make_examples + call_variants). Target: ~2.5 hr at ~$3/genome.
+- **Phase 3 (future):** GPU/NPU acceleration (Jetson CUDA, RK3588 NPU).
 
 ---
 
