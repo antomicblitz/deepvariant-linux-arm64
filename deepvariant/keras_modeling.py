@@ -115,6 +115,9 @@ def load_weights_to_model_with_different_channels(
 ) -> tf.keras.Model:
   """Initialize `model` with weights from `input_model` (different #channels).
 
+  Matches layers by name to handle architectures where layer ordering differs
+  between channel counts (e.g., EfficientNet-B3).
+
   Args:
     model: The model we want to output.
     input_model: The input model that contains the weights to initialize from.
@@ -122,50 +125,64 @@ def load_weights_to_model_with_different_channels(
   Returns:
     `model` with updated weights from `input_model`
   """
-  for layer_i, (input_model_layer, new_layer) in enumerate(
-      zip(input_model.layers, model.layers)
-  ):
+  # Build a name->layer map from the input model.
+  # EfficientNet with different input channels may have layers in different
+  # order or with suffix differences (e.g., 'normalization' vs
+  # 'normalization_1'), so we strip trailing _N suffixes for matching.
+  import re
+
+  def _base_name(name):
+    return re.sub(r'_\d+$', '', name)
+
+  input_layer_by_name = {}
+  for layer in input_model.layers:
+    if layer.weights:
+      input_layer_by_name[_base_name(layer.name)] = layer
+
+  matched = 0
+  for new_layer in model.layers:
     if not new_layer.weights:
       continue
-    if len(new_layer.weights) != len(input_model_layer.weights):
-      raise ValueError(
-          f'Weight count mismatch at layer {layer_i}: '
-          f'input model has {len(input_model_layer.weights)} weights, '
-          f'target model has {len(new_layer.weights)} weights.'
-      )
+    base = _base_name(new_layer.name)
+    input_layer = input_layer_by_name.get(base)
+    if input_layer is None:
+      continue
 
-    # Create a list of ndarray, which will be used input for `set_weights`
-    # at the end.
     new_weights_to_assign = new_layer.get_weights()
+    input_weights = input_layer.get_weights()
 
-    for i, (input_model_layer_weights, new_layer_weights) in enumerate(
-        zip(input_model_layer.get_weights(), new_layer.get_weights())
-    ):
-      if input_model_layer_weights.shape == new_layer_weights.shape:
-        new_weights_to_assign[i] = input_model_layer_weights
-      else:
+    if len(input_weights) != len(new_weights_to_assign):
+      logging.warning(
+          'Skipping layer %s: weight count mismatch (%d vs %d)',
+          new_layer.name, len(input_weights), len(new_weights_to_assign),
+      )
+      continue
+
+    for i, (iw, nw) in enumerate(zip(input_weights, new_weights_to_assign)):
+      if iw.shape == nw.shape:
+        new_weights_to_assign[i] = iw
+      elif len(iw.shape) >= 3 and len(nw.shape) >= 3:
         logging.info(
-            (
-                'input weights file layer %s:%s has shape %s, '
-                'target model layer %s:%s has shape %s'
-            ),
-            input_model_layer.name,
-            i,
-            input_model_layer_weights.shape,
-            new_layer.name,
-            i,
-            new_layer_weights.shape,
+            'Partial weight copy layer %s:%d %s -> %s',
+            new_layer.name, i, iw.shape, nw.shape,
         )
-        min_num_channels = min(
-            input_model_layer_weights.shape[2], new_layer_weights.shape[2]
+        min_ch = min(iw.shape[2], nw.shape[2])
+        new_weights_to_assign[i][:, :, :min_ch, :] = iw[:, :, :min_ch, :]
+      elif len(iw.shape) == 1 and len(nw.shape) == 1:
+        min_ch = min(iw.shape[0], nw.shape[0])
+        new_weights_to_assign[i][:min_ch] = iw[:min_ch]
+      else:
+        logging.warning(
+            'Skipping weight %s:%d (shapes %s vs %s)',
+            new_layer.name, i, iw.shape, nw.shape,
         )
-        new_weights_to_assign[i][:, :, :min_num_channels, :] = (
-            input_model_layer_weights[:, :, :min_num_channels, :]
-        )
-    # Now that the new_layer_weights list has the value we want to load with,
-    # and has the right shape.
-    model.layers[layer_i].set_weights(new_weights_to_assign)
+        continue
 
+    new_layer.set_weights(new_weights_to_assign)
+    matched += 1
+
+  logging.info('Transferred weights for %d/%d layers.', matched,
+               sum(1 for l in model.layers if l.weights))
   return model
 
 

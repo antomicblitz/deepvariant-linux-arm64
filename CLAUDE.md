@@ -44,7 +44,7 @@ The `call_variants` step runs Inception V3 (23.9M params) CNN inference on 100×
 | **ONNX Runtime (CPUExecutionProvider)** | All ARM64 CPUs | Production | **24% slower** than TF+OneDNN (measured)[6] | Done |
 | **ONNX Runtime (MLAS BF16)** | Graviton3+ (Neoverse V1/V2 only) | Production | 35-65% over ONNX CPU (config flag only) | Config |
 | **ONNX Runtime (ACL EP, source build)** | All ARM64 CPUs | Community-maintained | Unknown; fragile build, 16 ops only | High |
-| **EfficientNet-B3 (model swap)** | Any backend | Validated (ISPRAS paper) | 1.5-2x from 3.2x fewer FLOPs[14] | Medium |
+| **EfficientNet-B3 (model swap)** | Any backend | **DEAD END** | **3x slower** on CPU (measured) — depthwise convs have poor GEMM density | Done |
 | **Apache TVM + OpenCL** | Mali G610/G710 GPUs | Alpha for Mali Valhall | Poor real results on G610[8][9] | High |
 | **CUDA (Jetson)** | Jetson Orin only | Production | 3-5x | Low (TF native) |
 
@@ -52,9 +52,9 @@ The `call_variants` step runs Inception V3 (23.9M params) CNN inference on 100×
 
 **Phase 1 (CPU-only, COMPLETE):** TF aarch64 wheel + OneDNN+ACL + C++ optimizations (haplotype cap, ImageRow flat buffer, query cache). Benchmarked at 12m57s on chr20:1-30M (GCP t2a-standard-8).
 
-**Phase 2 (TF tuning + model modernization):** Two parallel workstreams:
+**Phase 2 (TF tuning):**
 - **2A: TF OneDNN tuning** — `get_concrete_function()` for Grappler BatchNorm folding, `KMP_AFFINITY`, `TF_ONEDNN_USE_SYSTEM_ALLOCATOR`. Low effort, 10-25% call_variants gain.
-- **2B: EfficientNet-B3** — Replace InceptionV3 (5.7 GFLOPs) with EfficientNet-B3 (1.8 GFLOPs). Highest-impact single change: 1.5-2x inference speedup that compounds with backend optimizations. ISPRAS paper validates +0.51% F1.[14] ~150 lines across 4 files + GPU training (~2h, ~$4).
+- **~~2B: EfficientNet-B3~~** — **DEAD END.** Benchmarked at 0.31x speed of InceptionV3 on CPU (3x slower despite 3.2x fewer FLOPs). Depthwise separable convolutions and SE blocks have poor computational density on CPUs compared to InceptionV3's dense GEMM-friendly convolutions. See `TRAINING_EXPERIMENT.md` for full details.
 
 **Phase 2 ONNX status:** The `--use_onnx` flag is implemented and works. On Neoverse-N1 (no BF16), ONNX CPUExecutionProvider is slower than TF+OneDNN. On Graviton3+ (BF16), enabling `mlas.enable_gemm_fastmath_arm64_bfloat16` may reverse this — needs benchmarking on actual Graviton hardware.
 
@@ -199,18 +199,16 @@ sess_options.add_session_config_entry(
 
 **Diagnostic:** Run `DNNL_VERBOSE=1` once to confirm ACL kernels are active in oneDNN.
 
-### 2.3 EfficientNet-B3 Model (TODO)
+### 2.3 EfficientNet-B3 Model (DEAD END)
 
-Replace InceptionV3 (23.9M params, 5.7 GFLOPs) with EfficientNet-B3 (12.3M params, 1.8 GFLOPs).
+**Attempted and measured.** Despite 3.2x fewer FLOPs, EfficientNet-B3 is **3x slower** than InceptionV3 on CPU inference. The full training pipeline was built and validated (see `TRAINING_EXPERIMENT.md`), but the speed result kills this approach.
 
-**Code changes (~150 lines across 4 files):**
-- `keras_modeling.py` — Add `efficientnetb3()` function using `tf.keras.applications.EfficientNetB3`, update `get_model()` dispatcher
-- `train.py` (line 216) — Use `get_model(config)(...)` instead of hardcoded `inceptionv3(...)`
-- `convert_to_saved_model.py` (line 97) — Same dispatch change
-- `dv_config.py` — Add `config.model_type = 'efficientnet_b3'` support
+**Root cause:** EfficientNet's depthwise separable convolutions and squeeze-and-excitation blocks produce many small kernel launches with poor data reuse, while InceptionV3's dense `Conv2D` operations map to single large GEMM calls with high arithmetic intensity. FLOPs ≠ speed on CPUs.
 
-**Training:** ~2h on single A10G (~$4), GIAB HG001 data, SGD+momentum, 10 epochs
-**Reference:** [ISPRAS fork](https://github.com/ispras/deepvariant_alternative_models), Gurianova et al. 2026 IJMS 27:513
+| Model | FLOPs | Params | CPU img/s (batch=128) | Relative Speed |
+|-------|-------|--------|-----------------------|----------------|
+| InceptionV3 | 5.7G | 23.9M | 591 | **1.0x** |
+| EfficientNet-B3 | 1.8G | 12.3M | 185 | **0.31x** |
 
 ### 2.4 Expected Cumulative Performance
 
@@ -218,49 +216,29 @@ Replace InceptionV3 (23.9M params, 5.7 GFLOPs) with EfficientNet-B3 (12.3M param
 |-------------|--------|----------------------------------|
 | C++ opts (done) | make_examples -10% | 12m57s |
 | TF tuning (concrete_fn + env vars) | call_variants -10-25% | ~11m-12m |
-| EfficientNet-B3 (3.2x fewer FLOPs) | call_variants -40-50% | ~8-9m |
-| On Graviton3+ with BF16 | additional -30-50% on inference | ~6-7m |
+| ~~EfficientNet-B3~~ | ~~call_variants -40-50%~~ | **DEAD END: 3x slower** |
+| On Graviton3+ with BF16 | additional -30-50% on inference | ~9-10m |
 
 ***
 
-## Phase 3: Model Modernization (EfficientNet-B3)
+## Phase 3: Model Modernization — ABANDONED
 
-### Goal
-Replace Inception V3 (23.9M params, 2015 architecture) with EfficientNet-B3 (12.3M params) for better accuracy AND faster inference.
+### EfficientNet-B3: Attempted and Failed
 
-### 3.1 Why This Matters More on ARM64
+The full training pipeline was built and a model was trained (see `TRAINING_EXPERIMENT.md`). However, CPU inference benchmarking showed EfficientNet-B3 is **3x slower** than InceptionV3 despite having 3.2x fewer FLOPs. This is because EfficientNet's depthwise separable convolutions and squeeze-and-excitation blocks have poor computational density on CPUs — many small operations with poor cache reuse vs InceptionV3's large dense GEMM calls.
 
-Gurianova et al. (2026, IJMS 27:513) demonstrated:[14]
+**The ISPRAS paper's accuracy improvements may be real, but are irrelevant if the model is 3x slower on our target hardware (ARM64 CPUs without GPU).**
 
-| Metric | Inception V3 (baseline) | EfficientNet-B3 |
-|--------|------------------------|-----------------|
-| Parameters | 23.9M | 12.3M (48% fewer) |
-| F1 Score | 94.80% | 95.31% (+0.51%) |
-| SNP F1 | >99% | >99% (statistically significant improvement) |
-| Training time | 2h 34min × 10 CV | 1h 59min × 10 CV |
-| ImageNet Top-1 | 77.9% | 81.6% |
+EfficientNet-B3 might still be viable for:
+- GPU-accelerated inference (Jetson Orin, desktop GPUs) where parallelism hides kernel dispatch overhead
+- NPU inference (RK3588) where the smaller model fits in limited memory budgets
+- But these are niche use cases that don't justify the complexity
 
-On weak GPUs (Mali G610) or NPUs (RK3588's 6 TOPS), a 48% smaller model has outsized impact:
-- Fewer MACs → faster inference per image
-- Better INT8 quantization tolerance (simpler architecture)
-- Fits in smaller NPU memory budgets
-- Effective speedup = model_speedup × hardware_speedup (multiplicative)
-
-### 3.2 Implementation Plan
-
-- [ ] Fork the training pipeline from upstream DeepVariant
-- [ ] Replace InceptionV3 backbone in `keras_modeling.py` with EfficientNet-B3
-- [ ] Retrain on the same GIAB training data Google uses (HG001, HG002, HG004, HG005, HG006, HG007)
-- [ ] Validate on held-out samples (HG003, HG005) using `hap.py`[14]
-- [ ] Export as SavedModel and convert to ONNX
-- [ ] Apply INT8 quantization and validate accuracy
-- [ ] Compare accuracy with Inception V3 baseline — must match or exceed published F1 scores
-
-### 3.3 Training Infrastructure
-
-EfficientNet-B3 trains in ~2 hours per fold. Full 10-fold CV on a single GPU:[14]
-- NVIDIA A10G (Graviton + GPU instance): ~20 hours total
-- Or use x86 GPU instance for training, export model for ARM64 inference
+### What Was Built (Preserved for Reference)
+- `deepvariant/keras_modeling.py` — `efficientnetb3()` function, name-based weight transfer
+- `scripts/train_efficientnet_b3.sh` — Full training data pipeline
+- `scripts/export_efficientnet_b3.py` — Checkpoint → SavedModel export
+- Training config, dataset configs, protobuf compilation
 
 ***
 
@@ -364,6 +342,7 @@ These optimizations were investigated on macOS and found to have zero impact. Th
 | `-O3` / `-march=native` globally | 0% | Already the default; breaks BoringSSL on ARM64 |
 | Mixed precision inference | 0% | Only useful if backend handles it automatically |
 | ConvertToPb vectorization | 0% | Only 0.12% of CPU time |
+| **EfficientNet-B3 model swap** | **3x slower** | Depthwise separable convs + SE blocks have poor CPU GEMM density; FLOPs ≠ speed |
 
 ### What DOES Matter (Profile First)
 
@@ -406,10 +385,10 @@ Apple Silicon's unified memory makes CPU→GPU data transfer free. On Linux ARM6
 
 ### v0.2.0 — Inference Acceleration (In Progress)
 - [x] ONNX model conversion and integration (complete, but slower than TF+OneDNN on N1)
+- [x] EfficientNet-B3 training pipeline built and model trained — **DEAD END: 3x slower on CPU**
 - [ ] TF OneDNN tuning (concrete_fn, KMP_AFFINITY, system allocator)
-- [ ] EfficientNet-B3 model trained and validated
-- [ ] Benchmark shows ≥1.5x call_variants speedup over v0.1.0 baseline
 - [ ] Graviton3+ benchmark with BF16 (ONNX MLAS or TF OneDNN)
+- [ ] INT8 quantization of InceptionV3
 
 ### v0.3.0 — GPU/NPU Acceleration (Future, Optional)
 - [ ] Jetson Orin CUDA path working
@@ -525,3 +504,5 @@ deepvariant-linux-arm64/
 5. **TF+OneDNN is the primary inference backend.** Benchmarking showed ONNX Runtime CPUExecutionProvider is 24% slower than TF+OneDNN on Neoverse-N1. The ONNX ACL ExecutionProvider is community-maintained (16 operators, fragile builds) and not worth pursuing. ONNX may outperform TF on Graviton3+ via MLAS BF16 kernels — needs testing. The `--use_onnx` flag is implemented as an opt-in alternative.
 
 6. **BF16 fast math on Graviton3+.** Graviton3 and newer support BF16 operations. Enable via `DNNL_DEFAULT_FPMATH_MODE=BF16`. Validate that variant calling accuracy is unaffected (BF16 has 8 mantissa bits vs FP32's 23 — sufficient for Inception V3/EfficientNet classification but must be verified).[7]
+
+7. **EfficientNet-B3 is NOT faster than InceptionV3 on CPU.** Benchmarked at 0.31x the speed of InceptionV3 (3x slower) despite 3.2x fewer FLOPs. Depthwise separable convolutions and squeeze-and-excitation blocks produce many small operations with poor data reuse, while InceptionV3's dense Conv2D operations map to single large GEMM calls. FLOP count does not predict CPU inference speed — kernel efficiency and memory access patterns matter more. See `TRAINING_EXPERIMENT.md`.

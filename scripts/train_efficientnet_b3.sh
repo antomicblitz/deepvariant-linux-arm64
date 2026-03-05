@@ -21,12 +21,14 @@ DV_VERSION="1.9.0"
 DV_IMAGE="google/deepvariant:${DV_VERSION}"
 
 REF="${DATA_DIR}/reference/GRCh38_no_alt_analysis_set.fasta"
-HG001_BAM="${DATA_DIR}/bam/HG001.novaseq.pcr-free.35x.dedup.grch38_no_alt.bam"
-HG001_TRUTH="${DATA_DIR}/truth/HG001_GRCh38_1_22_v4.2.1_benchmark.vcf.gz"
-HG001_BED="${DATA_DIR}/truth/HG001_GRCh38_1_22_v4.2.1_benchmark_noinconsistent.bed"
-HG003_BAM="${DATA_DIR}/bam/HG003.novaseq.pcr-free.35x.dedup.grch38_no_alt.chr20.bam"
-HG003_TRUTH="${DATA_DIR}/truth/HG003_GRCh38_1_22_v4.2.1_benchmark.vcf.gz"
-HG003_BED="${DATA_DIR}/truth/HG003_GRCh38_1_22_v4.2.1_benchmark_noinconsistent.bed"
+# Training: HG003 full BAM on chr1-19,21-22
+TRAIN_BAM="${DATA_DIR}/bam/HG003.novaseq.pcr-free.35x.dedup.grch38_no_alt.bam"
+TRAIN_TRUTH="${DATA_DIR}/truth/HG003_GRCh38_1_22_v4.2.1_benchmark.vcf.gz"
+TRAIN_BED="${DATA_DIR}/truth/HG003_GRCh38_1_22_v4.2.1_benchmark_noinconsistent.bed"
+# Tuning: HG003 chr20 only
+TUNE_BAM="${DATA_DIR}/bam/HG003.novaseq.pcr-free.35x.dedup.grch38_no_alt.chr20.bam"
+TUNE_TRUTH="${DATA_DIR}/truth/HG003_GRCh38_1_22_v4.2.1_benchmark.vcf.gz"
+TUNE_BED="${DATA_DIR}/truth/HG003_GRCh38_1_22_v4.2.1_benchmark_noinconsistent.bed"
 
 TRAIN_DIR="${DATA_DIR}/training_examples"
 TUNE_DIR="${DATA_DIR}/tuning_examples"
@@ -35,7 +37,7 @@ OUTPUT_DIR="${DATA_DIR}/output"
 # ============================================
 # Step 1: Generate training TFRecords from HG001
 # ============================================
-echo "=== Step 1: Generate training TFRecords from HG001 ==="
+echo "=== Step 1: Generate training TFRecords from HG003 (chr1-19,21-22) ==="
 echo "This uses the official DeepVariant x86 Docker for make_examples."
 echo "Expected time: ~30-60 min depending on CPU count (${NPROC} cores)."
 
@@ -45,7 +47,9 @@ if [[ ! -f "${TRAIN_DIR}/training_examples.tfrecord-00000-of-$(printf '%05d' ${N
 
   echo ">>> Running make_examples in training mode..."
   # Use training regions: all autosomes except chr20 (held out for tuning)
-  TRAINING_REGIONS="chr1,chr2,chr3,chr4,chr5,chr6,chr7,chr8,chr9,chr10,chr11,chr12,chr13,chr14,chr15,chr16,chr17,chr18,chr19,chr21,chr22"
+  TRAINING_REGIONS="chr1 chr2 chr3 chr4 chr5 chr6 chr7 chr8 chr9 chr10 chr11 chr12 chr13 chr14 chr15 chr16 chr17 chr18 chr19 chr21 chr22"
+
+  CHANNEL_LIST="read_base,base_quality,mapping_quality,strand,read_supports_variant,base_differs_from_ref"
 
   time docker run --rm \
     -v "${DATA_DIR}/reference":/reference \
@@ -56,10 +60,11 @@ if [[ ! -f "${TRAIN_DIR}/training_examples.tfrecord-00000-of-$(printf '%05d' ${N
     /opt/deepvariant/bin/make_examples \
       --mode training \
       --ref /reference/GRCh38_no_alt_analysis_set.fasta \
-      --reads /bam/HG001.novaseq.pcr-free.35x.dedup.grch38_no_alt.bam \
-      --truth_variants /truth/HG001_GRCh38_1_22_v4.2.1_benchmark.vcf.gz \
-      --confident_regions /truth/HG001_GRCh38_1_22_v4.2.1_benchmark_noinconsistent.bed \
+      --reads /bam/HG003.novaseq.pcr-free.35x.dedup.grch38_no_alt.bam \
+      --truth_variants /truth/HG003_GRCh38_1_22_v4.2.1_benchmark.vcf.gz \
+      --confident_regions /truth/HG003_GRCh38_1_22_v4.2.1_benchmark_noinconsistent.bed \
       --examples /output/training_examples.tfrecord@${NPROC}.gz \
+      --channel_list "${CHANNEL_LIST}" \
       --regions "${TRAINING_REGIONS}" \
       --task 0
 
@@ -86,6 +91,7 @@ echo ">>> Training examples: ${TRAIN_COUNT}"
 echo ""
 echo "=== Step 2: Generate tuning TFRecords from HG003 chr20 ==="
 
+CHANNEL_LIST="read_base,base_quality,mapping_quality,strand,read_supports_variant,base_differs_from_ref"
 if [[ ! -f "${TUNE_DIR}/tuning_examples.tfrecord-00000-of-$(printf '%05d' ${NPROC}).gz" ]]; then
   time docker run --rm \
     -v "${DATA_DIR}/reference":/reference \
@@ -100,6 +106,7 @@ if [[ ! -f "${TUNE_DIR}/tuning_examples.tfrecord-00000-of-$(printf '%05d' ${NPRO
       --truth_variants /truth/HG003_GRCh38_1_22_v4.2.1_benchmark.vcf.gz \
       --confident_regions /truth/HG003_GRCh38_1_22_v4.2.1_benchmark_noinconsistent.bed \
       --examples /output/tuning_examples.tfrecord@${NPROC}.gz \
+      --channel_list "${CHANNEL_LIST}" \
       --regions "chr20" \
       --task 0
 
