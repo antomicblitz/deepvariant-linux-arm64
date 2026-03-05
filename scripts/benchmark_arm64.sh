@@ -75,21 +75,48 @@ echo ""
 # Download test data (GIAB HG003 chr20)
 mkdir -p "${DATA_DIR}" "${OUTPUT_DIR}"
 
-FTPDIR="https://storage.googleapis.com/deepvariant/case-study-testdata"
-REF="GCA_000001405.15_GRCh38_no_alt_analysis_set.chr20.fasta"
+# Data sources (per upstream case study docs):
+#   Reference: NCBI FTP (full genome .fna.gz, gunzip locally)
+#   BAM: Google Cloud Storage (chr20 subset)
+#   Truth: GIAB FTP (full genome VCF/BED)
+NCBI_REF_DIR="https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/000/001/405/GCA_000001405.15_GRCh38/seqs_for_alignment_pipelines.ucsc_ids"
+GCS_DIR="https://storage.googleapis.com/deepvariant/case-study-testdata"
+GIAB_DIR="https://ftp-trace.ncbi.nlm.nih.gov/giab/ftp/release/AshkenazimTrio/HG003_NA24149_father/NISTv4.2.1/GRCh38"
+
+REF="GRCh38_no_alt_analysis_set.fasta"
 BAM="HG003.novaseq.pcr-free.35x.dedup.grch38_no_alt.chr20.bam"
-TRUTH_VCF="HG003_GRCh38_1_22_v4.2.1_benchmark.chr20.vcf.gz"
-TRUTH_BED="HG003_GRCh38_1_22_v4.2.1_benchmark_noinconsistent.chr20.bed"
+TRUTH_VCF="HG003_GRCh38_1_22_v4.2.1_benchmark.vcf.gz"
+TRUTH_BED="HG003_GRCh38_1_22_v4.2.1_benchmark_noinconsistent.bed"
 
 echo "========== Downloading test data (if not cached)"
-for FILE in \
-  "${REF}" "${REF}.fai" \
-  "${BAM}" "${BAM}.bai" \
-  "${TRUTH_VCF}" "${TRUTH_VCF}.tbi" \
-  "${TRUTH_BED}"; do
+
+# Reference FASTA (download compressed, decompress)
+if [[ ! -f "${DATA_DIR}/${REF}" ]]; then
+  echo "  Downloading reference FASTA (compressed)..."
+  curl -s "${NCBI_REF_DIR}/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna.gz" \
+    | gunzip > "${DATA_DIR}/${REF}"
+fi
+if [[ ! -f "${DATA_DIR}/${REF}.fai" ]]; then
+  echo "  Downloading reference FASTA index..."
+  curl -s -o "${DATA_DIR}/${REF}.fai" \
+    "${NCBI_REF_DIR}/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna.fai"
+fi
+
+# BAM (from GCS, chr20 subset)
+for FILE in "${BAM}" "${BAM}.bai"; do
   if [[ ! -f "${DATA_DIR}/${FILE}" ]]; then
     echo "  Downloading ${FILE}..."
-    curl -s -o "${DATA_DIR}/${FILE}" "${FTPDIR}/${FILE}"
+    curl -s -o "${DATA_DIR}/${FILE}" "${GCS_DIR}/${FILE}"
+  else
+    echo "  Cached: ${FILE}"
+  fi
+done
+
+# Truth VCF and BED (from GIAB FTP)
+for FILE in "${TRUTH_VCF}" "${TRUTH_VCF}.tbi" "${TRUTH_BED}"; do
+  if [[ ! -f "${DATA_DIR}/${FILE}" ]]; then
+    echo "  Downloading ${FILE}..."
+    curl -s -o "${DATA_DIR}/${FILE}" "${GIAB_DIR}/${FILE}"
   else
     echo "  Cached: ${FILE}"
   fi
