@@ -18,9 +18,8 @@ ARM64 cloud instances are 25-50% cheaper per vCPU than x86 equivalents. This for
 | Sentieon DNAscope (Graviton) | ~1-2 hr | ~$2-4 + **per-sample license** | Proprietary |
 | NVIDIA Parabricks (GPU) | 8-16 min | <$2 + **license** | Proprietary |
 | **This fork (16 vCPU Graviton3, BF16)** | **~6.5 hr** | **~$3.76** | **Open source** |
-| **This fork (16 vCPU Oracle A1, INT8)** | **TBD** | **est. ~$1.50-2.00** | **Open source** |
 
-> **Already cheaper than Google's x86 reference** ($3.76 vs $5.01). With scaling to 32+ vCPU and fast_pipeline, targeting ~2.5 hr at ~$3/genome. On Oracle A1 ($0.01/OCPU-hr), INT8 quantization could push costs below $2/genome — relevant for research labs and developing countries where proprietary licensing is a barrier.
+> **Already cheaper than Google's x86 reference** ($3.76 vs $5.01) at 16 vCPU. With scaling to 32+ vCPU and fast_pipeline, targeting ~2.5 hr at ~$3/genome. INT8 quantization is also available for non-BF16 ARM64 platforms (Oracle A1, Hetzner CAX, GCP Tau T2A) — cost projections for those platforms are pending benchmarking.
 
 **Use this fork when** you want open-source DeepVariant on ARM64, or you are cost-sensitive and can tolerate longer runtimes (batch processing, research pipelines). **Use GPU-accelerated DeepVariant** when you need fast turnaround.
 
@@ -28,7 +27,7 @@ ARM64 cloud instances are 25-50% cheaper per vCPU than x86 equivalents. This for
 
 ## Benchmarks (chr20, Graviton3)
 
-All benchmarks: GIAB HG003, full chr20, AWS c7g.4xlarge (16 vCPU Graviton3), averaged over 2 runs, accuracy validated with `rtg vcfeval`.
+All benchmarks: GIAB HG003, full chr20, AWS c7g.4xlarge (16 vCPU Graviton3), averaged over 2 runs (FP32/BF16) or single run (INT8), accuracy validated with `rtg vcfeval`.
 
 ### Inference Rate
 
@@ -38,9 +37,11 @@ All benchmarks: GIAB HG003, full chr20, AWS c7g.4xlarge (16 vCPU Graviton3), ave
 | GCP t2a (Neoverse-N1) | 16 | FP32 | 0.512 s/100 | 7m22s |
 | AWS Graviton3 | 16 | FP32 | 0.379 s/100 | 9m41s |
 | **AWS Graviton3** | **16** | **BF16** | **0.232 s/100** | **8m06s** |
-| **AWS Graviton3** | **16** | **INT8 ONNX** | **0.225 s/100** | **~8m36s** |
+| **AWS Graviton3** | **16** | **INT8 ONNX** | **0.238 s/100** | **~8m36s** |
 
-BF16 and INT8 achieve nearly identical inference rates on Graviton3. INT8 is the better choice on platforms **without** BF16 support (Neoverse-N1, Ampere Altra), where it provides a 2.3x speedup over FP32 ONNX.
+BF16 and INT8 achieve nearly identical call_variants rates on Graviton3. INT8 is the better choice on platforms **without** BF16 support (Neoverse-N1, Ampere Altra), where it provides a 2.3x speedup over FP32 ONNX (isolated benchmark: 0.225 s/100 vs 0.517 s/100).
+
+> **Note on isolated vs pipeline rates:** The isolated ONNX benchmark measures 0.225 s/100 for INT8, while the full pipeline measures 0.238 s/100. The difference is due to pipeline overhead (TF environment initialization, dataset loading, writer process coordination). The pipeline rate is the operationally relevant number.
 
 ### Pipeline Breakdown (Graviton3, 16 vCPU)
 
@@ -51,18 +52,18 @@ BF16 and INT8 achieve nearly identical inference rates on Graviton3. INT8 is the
 | postprocess | 29s | 24s | 14s |
 | **Total** | **582s** | **487s** | **516s** |
 
-> INT8 make_examples is slower because ONNX env setup adds overhead; call_variants is the same speed as BF16.
+> **INT8 make_examples is 29s slower than BF16.** make_examples is a C++ binary that does not use ONNX — the slowdown is likely caused by OMP environment variables (`OMP_NUM_THREADS`, `OMP_PROC_BIND`, `OMP_PLACES`) set for the ONNX call_variants step interfering with make_examples' C++ thread pool. This needs further investigation; it nearly cancels out the call_variants speedup, making INT8 slower end-to-end than BF16 on Graviton3 (516s vs 487s).
 
 ### Accuracy
 
-All three configurations produce **equivalent accuracy** on GIAB HG003 chr20 (207,799 variant calls):
+All three configurations produce **equivalent accuracy** on GIAB HG003 chr20 (207,799 variant calls, aggregate F1):
 
 | Metric | FP32 | BF16 | INT8 ONNX |
 |--------|------|------|-----------|
 | SNP F1 | 0.9974 | 0.9974 | 0.9978 |
 | INDEL F1 | 0.9940 | 0.9940 | 0.9962 |
 
-INT8 accuracy is slightly higher (within noise) — quantization did not degrade variant calling quality.
+> **Caveat:** These are aggregate F1 scores on chr20. Stratified region validation (GIAB difficult regions: low-complexity, tandem repeats, homopolymers, segmental duplications) is pending. INT8 quantization can fail silently in high-homopolymer and tandem repeat contexts where aggregate F1 may mask localized degradation. Do not use INT8 in production without stratified validation.
 
 ---
 
@@ -90,7 +91,7 @@ docker run \
 
 ### Enable BF16 (Graviton3+)
 
-Add these env vars for 38% faster CNN inference on Graviton3/4 instances (c7g, c8g, m7g, r7g):
+38% faster call_variants inference on Graviton3/4 instances (c7g, c8g, m7g, r7g). Total pipeline speedup is 1.20x at 16 vCPU — make_examples becomes the bottleneck at this core count.
 
 ```bash
 docker run \
@@ -197,7 +198,9 @@ This fork modifies upstream DeepVariant v1.9.0 for ARM64 Linux compilation.
 
 **New files:** `Dockerfile.arm64`, `settings_arm64.sh`, `build-prereq-arm64.sh`, `build_release_binaries_arm64.sh`, benchmark and quantization scripts in `scripts/`.
 
-**Key modifications:** `third_party/htslib.BUILD` (NEON detection), `third_party/libssw.BUILD` (sse2neon header), `tools/build_absl.sh` (clang-14), `run-prereq.sh` (Ubuntu 24.04 fixes), `deepvariant/call_variants.py` (ONNX + INT8 normalization + warmup).
+**Key modifications:** `third_party/htslib.BUILD` (NEON detection), `third_party/libssw.BUILD` (sse2neon header), `tools/build_absl.sh` (clang-14), `run-prereq.sh` (Ubuntu 24.04 fixes), `deepvariant/call_variants.py` (ONNX inference, INT8 output normalization, SavedModel warmup).
+
+**INT8 normalization fix:** INT8 quantization error causes some predictions to have probability distributions that don't sum to 1.0 (e.g., `[0.992, 0.0, 0.0]`). The ONNX inference path renormalizes outputs (`predictions / row_sums`) before passing to `round_gls()`. Without this fix, `postprocess_variants` crashes with `ValueError: Invalid genotype likelihoods do not sum to one`. This is specific to quantized models — FP32 and BF16 outputs always sum to 1.0.
 
 <details>
 <summary>Full list of build fixes</summary>
@@ -221,8 +224,8 @@ This fork modifies upstream DeepVariant v1.9.0 for ARM64 Linux compilation.
 
 - **Phase 1 (complete):** Native ARM64 build, Docker image, GIAB-validated pipeline.
 - **Phase 2A (complete):** BF16 on Graviton3+ — 1.61x call_variants speedup, zero accuracy loss.
-- **Phase 2B (complete):** INT8 static quantization — 2.3x over ONNX FP32, matches BF16 speed, accuracy validated. Viable alternative on non-BF16 platforms (Neoverse-N1, Ampere Altra, Oracle A1).
-- **Phase 2C (next):** Scale to 32+ vCPU + fast_pipeline (concurrent make_examples + call_variants). Target: ~2.5 hr at ~$3/genome.
+- **Phase 2B (complete):** INT8 static quantization — 2.3x over ONNX FP32, matches BF16 call_variants rate, aggregate accuracy validated. Stratified region validation pending.
+- **Phase 2C (next):** Scale to 32+ vCPU + fast_pipeline (concurrent make_examples + call_variants). Target: ~2.5 hr at ~$3/genome. INT8 benchmarking on non-BF16 platforms (Oracle A1, Hetzner CAX).
 - **Phase 3 (future):** GPU/NPU acceleration (Jetson CUDA, RK3588 NPU).
 
 ---

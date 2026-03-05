@@ -233,7 +233,7 @@ Benchmarked static INT8 quantization via ONNX Runtime on AWS c7g.4xlarge (16 vCP
 - **INT8 vs BF16 (TF+OneDNN): ~same** (0.225 vs 0.232 s/100, ~3% faster)
 - Batch size has minimal impact — INT8 SMMLA is efficient at all sizes tested
 
-**Full pipeline (chr20, c7g.4xlarge 16 vCPU):**
+**Full pipeline (chr20, c7g.4xlarge 16 vCPU, single run):**
 
 | Step | INT8 | BF16 |
 |------|------|------|
@@ -242,12 +242,18 @@ Benchmarked static INT8 quantization via ONNX Runtime on AWS c7g.4xlarge (16 vCP
 | postprocess | 14s | 24s |
 | **Total** | **~516s** | **487s** |
 
+> **Note:** Isolated benchmark measures 0.225 s/100, pipeline measures 0.238 s/100. The difference is pipeline overhead (TF env init, dataset loading, writer coordination). The pipeline rate is operationally relevant.
+>
+> **make_examples 307s vs 278s:** make_examples is a C++ binary that does not use ONNX. The 29s slowdown is likely caused by OMP environment variables (`OMP_NUM_THREADS`, `OMP_PROC_BIND`, `OMP_PLACES`) set for call_variants interfering with make_examples' C++ thread pool. This needs investigation — it nearly cancels the call_variants speedup.
+
 **Accuracy (rtg vcfeval, chr20 GIAB HG003):**
 
 | Metric | INT8 | BF16 | Gate | Status |
 |--------|------|------|------|--------|
 | SNP F1 | **0.9978** | 0.9977 | ≥0.9974 | **PASS** |
 | INDEL F1 | **0.9962** | 0.9961 | ≥0.9940 | **PASS** |
+
+**Accuracy caveat:** These are aggregate F1 scores on chr20. Stratified region validation (GIAB difficult regions: low-complexity, tandem repeats, homopolymers, segmental duplications) is still pending. INT8 quantization can fail silently in repetitive contexts where aggregate F1 masks localized degradation. Do not deploy INT8 in production without stratified validation.
 
 **Key finding:** INT8 via ONNX gives essentially the **same performance as BF16 via TF+OneDNN** on Graviton3. INT8 is 2.3x over ONNX FP32, but since TF+OneDNN FP32 is faster than ONNX FP32, the net effect vs TF BF16 is negligible.
 
