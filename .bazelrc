@@ -65,3 +65,6 @@ test --test_output=errors
 #    temporarily revert to the legacy flag-based way of specifying toolchains by
 #    setting `--incompatible_use_python_toolchains=false`."
 build --python_top=//:deepvariant_python_runtime --incompatible_use_python_toolchains=false
+
+# Import user-local build overrides (ARM64 job limits, GCC compat flags, etc.)
+try-import %workspace%/user.bazelrc
