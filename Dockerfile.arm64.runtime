@@ -219,6 +219,19 @@ RUN apt-get -y update && \
   apt-get autoremove -y --purge && \
   rm -rf /var/lib/apt/lists/*
 
+# ONNX Runtime for accelerated ARM64 inference
+RUN PATH="${HOME}/.local/bin:$PATH" pip3 install tf2onnx onnxruntime
+
+# Convert models to ONNX format for --use_onnx flag
+RUN python3 -m tf2onnx.convert --saved-model /opt/models/wgs --output /opt/models/wgs/model.onnx --opset 17 && \
+    python3 -m tf2onnx.convert --saved-model /opt/models/wes --output /opt/models/wes/model.onnx --opset 17 && \
+    python3 -m tf2onnx.convert --saved-model /opt/models/pacbio --output /opt/models/pacbio/model.onnx --opset 17
+
+# Docker entrypoint for ARM64 runtime optimizations
+COPY scripts/docker_entrypoint.sh /opt/deepvariant/bin/docker_entrypoint.sh
+RUN chmod +x /opt/deepvariant/bin/docker_entrypoint.sh
+
 WORKDIR /opt/deepvariant
 
+ENTRYPOINT ["/opt/deepvariant/bin/docker_entrypoint.sh"]
 CMD ["/opt/deepvariant/bin/run_deepvariant", "--help"]

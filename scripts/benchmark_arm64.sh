@@ -14,6 +14,7 @@ set -euo pipefail
 
 DOCKER_IMAGE="deepvariant-arm64"
 RUN_ACCURACY=false
+USE_ONNX=false
 DATA_DIR="${HOME}/deepvariant-benchmark"
 OUTPUT_DIR="${DATA_DIR}/output"
 
@@ -21,6 +22,10 @@ while [[ $# -gt 0 ]]; do
   case $1 in
     --accuracy)
       RUN_ACCURACY=true
+      shift
+      ;;
+    --onnx)
+      USE_ONNX=true
       shift
       ;;
     --docker-image)
@@ -43,6 +48,7 @@ echo "========== DeepVariant ARM64 Benchmark =========="
 echo "Docker image: ${DOCKER_IMAGE}"
 echo "Data dir: ${DATA_DIR}"
 echo "Accuracy validation: ${RUN_ACCURACY}"
+echo "ONNX Runtime: ${USE_ONNX}"
 echo ""
 
 # System info
@@ -54,6 +60,16 @@ echo "RAM: $(free -h | awk '/^Mem:/ {print $2}')"
 if grep -q bf16 /proc/cpuinfo 2>/dev/null; then
   echo "BF16: supported"
 fi
+echo ""
+
+# TF/ONNX runtime config
+echo "========== Runtime Config"
+echo "TF_ENABLE_ONEDNN_OPTS=${TF_ENABLE_ONEDNN_OPTS:-not set}"
+echo "DNNL_DEFAULT_FPMATH_MODE=${DNNL_DEFAULT_FPMATH_MODE:-not set}"
+echo "OMP_NUM_THREADS=${OMP_NUM_THREADS:-not set}"
+echo "TF_NUM_INTEROP_THREADS=${TF_NUM_INTEROP_THREADS:-not set}"
+echo "TF_NUM_INTRAOP_THREADS=${TF_NUM_INTRAOP_THREADS:-not set}"
+echo "KMP_BLOCKTIME=${KMP_BLOCKTIME:-not set}"
 echo ""
 
 # Download test data (GIAB HG003 chr20)
@@ -83,6 +99,12 @@ echo ""
 echo "========== Running DeepVariant (chr20, WGS)"
 START_TIME=$(date +%s)
 
+ONNX_FLAG=""
+if [[ "${USE_ONNX}" == "true" ]]; then
+  ONNX_FLAG="--use_onnx"
+  echo "Using ONNX Runtime for inference"
+fi
+
 docker run --rm \
   -v "${DATA_DIR}:/data" \
   -v "${OUTPUT_DIR}:/output" \
@@ -95,7 +117,8 @@ docker run --rm \
     --output_gvcf=/output/HG003_arm64.g.vcf.gz \
     --num_shards="$(nproc)" \
     --regions=chr20 \
-    --intermediate_results_dir=/output/intermediate
+    --intermediate_results_dir=/output/intermediate \
+    ${ONNX_FLAG}
 
 END_TIME=$(date +%s)
 ELAPSED=$((END_TIME - START_TIME))
@@ -117,6 +140,7 @@ cat > "${OUTPUT_DIR}/benchmark_result.json" << EOF
   "ram_gb": $(free -g | awk '/^Mem:/ {print $2}'),
   "bf16_support": $(grep -q bf16 /proc/cpuinfo 2>/dev/null && echo true || echo false),
   "docker_image": "${DOCKER_IMAGE}",
+  "use_onnx": ${USE_ONNX},
   "region": "chr20",
   "sample": "HG003",
   "wall_time_seconds": ${ELAPSED},
