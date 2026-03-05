@@ -154,36 +154,38 @@ def chart3_accuracy():
 
 def chart4_cost_comparison():
     """Horizontal bar chart: estimated cost per genome across platforms."""
-    fig, ax = plt.subplots(figsize=(8, 4))
+    fig, ax = plt.subplots(figsize=(9, 4))
 
+    # Only include: Google official reference, and our measured Graviton3 data
+    # Google n2-standard-96: 79 min official benchmark, $3.8074/hr = $5.01/genome
+    # Graviton3 FP32: 581s/chr20 * 48.1 = 27945s = 7.76hr * $0.58/hr = $4.50/genome
+    # Graviton3 BF16: 486s/chr20 * 48.1 = 23374s = 6.49hr * $0.58/hr = $3.76/genome
     platforms = [
-        'GCP n2-std-16 (x86)',
-        'AWS Graviton3 FP32',
-        'AWS Graviton4 (est.)',
-        'AWS Graviton3 BF16',
-        'Oracle Ampere A1 (est.)',
+        'GCP n2-std-96 (x86)\n96 vCPU, ~79 min *',
+        'Graviton3 FP32\n16 vCPU, ~7.8 hr **',
+        'Graviton3 BF16\n16 vCPU, ~6.5 hr **',
     ]
-    costs = [8.70, 4.64, 3.85, 3.89, 1.73]
-    colors_list = [C_GCP, C_GRAVITON, '#FF6600', C_BF16, '#C74634']
-
-    # Recalculate Graviton3 BF16 cost: 486s/chr20 * 48.1 = 23,375s = 6.49hr * $0.58 = $3.76
-    # Actually: wall time 486s for chr20. Genome = 486 * 48.1 = 23374s = 6.49hr. $0.58/hr * 6.49 = $3.76
-    costs[3] = 3.76
-    # Graviton3 FP32: 581s * 48.1 = 27945s = 7.76hr * $0.58 = $4.50
-    costs[1] = 4.50
+    costs = [5.01, 4.50, 3.76]
+    colors_list = [C_GCP, C_GRAVITON, C_BF16]
 
     bars = ax.barh(platforms, costs, color=colors_list, height=0.55, edgecolor='white')
 
     for bar, cost in zip(bars, costs):
-        ax.text(bar.get_width() + 0.15, bar.get_y() + bar.get_height()/2,
+        ax.text(bar.get_width() + 0.1, bar.get_y() + bar.get_height()/2,
                 f'${cost:.2f}', va='center', fontweight='bold', fontsize=11)
 
-    ax.set_xlabel('Estimated cost per 30x human genome (USD)', fontsize=12)
-    ax.set_title('Cost per Genome — ARM64 vs x86', fontsize=13, fontweight='bold', pad=15)
-    ax.set_xlim(0, 11)
+    ax.set_xlabel('Estimated cost per 30x human genome (USD, on-demand)', fontsize=11)
+    ax.set_title('Cost per Genome Comparison', fontsize=13, fontweight='bold', pad=15)
+    ax.set_xlim(0, 7)
     ax.xaxis.grid(True, alpha=0.3)
     ax.set_axisbelow(True)
     ax.invert_yaxis()
+
+    # Footnotes
+    fig.text(0.12, -0.02, '* Google official benchmark (n2-standard-96, $3.81/hr)',
+             fontsize=8, color='#666')
+    fig.text(0.12, -0.07, '** Extrapolated from measured chr20 wall time x 48.1 (c7g.4xlarge, $0.58/hr)',
+             fontsize=8, color='#666')
 
     plt.tight_layout()
     fig.savefig(os.path.join(OUT_DIR, 'cost_per_genome.png'), bbox_inches='tight')

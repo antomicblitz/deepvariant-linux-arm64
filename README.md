@@ -4,15 +4,14 @@
 [![platform](https://img.shields.io/badge/platform-Linux%20ARM64-blue?logo=linux)](https://en.wikipedia.org/wiki/AArch64)
 [![build](https://img.shields.io/badge/first%20native%20ARM64%20build-brightgreen)](#what-this-fork-does)
 [![accuracy](https://img.shields.io/badge/accuracy-validated%20on%20GIAB-success)](#accuracy-validation)
-[![cost](https://img.shields.io/badge/up%20to%2080%25%20cheaper%20than%20x86-orange?logo=amazonaws)](#cost-comparison)
 
-There is no official Linux ARM64 build of DeepVariant. The official Docker image is x86-only and uses SSE4/AVX instructions that do not exist on ARM. This fork patches the Bazel build system, htslib, and libssw to compile natively on aarch64, producing the first working DeepVariant Docker image for ARM64 Linux — enabling deployment on AWS Graviton, Oracle Ampere A1, Hetzner CAX, and other ARM64 cloud instances at 20-80% lower cost than x86.
+There is no official Linux ARM64 build of DeepVariant. The official Docker image is x86-only and uses SSE4/AVX instructions that do not exist on ARM. This fork patches the Bazel build system, htslib, and libssw to compile natively on aarch64, producing the first working DeepVariant Docker image for ARM64 Linux — enabling deployment on AWS Graviton, Oracle Ampere A1, Hetzner CAX, and other ARM64 cloud instances.
 
 > **What this fork does, in order of significance:**
 >
 > **(1) Makes DeepVariant build and run natively on Linux ARM64.** No emulation, no QEMU, no Rosetta — native aarch64 binaries compiled with GCC 13 on Ubuntu 24.04.
 >
-> **(2) Unlocks 20-80% cloud cost savings** by enabling deployment on ARM64 instances (Graviton, Ampere A1, Hetzner CAX) which are significantly cheaper than equivalent x86 instances.
+> **(2) Enables deployment on ARM64 cloud instances** (Graviton, Ampere A1, Hetzner CAX) which offer lower per-core pricing than x86 instances.
 >
 > **(3) Provides a Docker image** that works out of the box on any ARM64 Linux host — same `run_deepvariant` interface as the official x86 image.
 >
@@ -65,19 +64,40 @@ BF16 fast math produces **identical accuracy** to FP32. Validated on GIAB HG003 
 
 Both FP32 and BF16 produce 207,799 variant calls — identical output.
 
-### Cost per Genome
+### Cost Comparison
 
 ![Cost per genome](docs/figures/cost_per_genome.png)
 
-| Platform | Instance | $/hr | Est. cost/genome |
-|----------|----------|------|-----------------|
-| GCP n2-standard-16 (x86, baseline) | 16 vCPU | $0.76 | ~$8.70 |
-| **AWS Graviton3 FP32** | c7g.4xlarge, 16 vCPU | $0.58 | **~$4.50** |
-| **AWS Graviton4** (est.) | c8g.4xlarge, 16 vCPU | $0.54 | **~$3.85** |
-| **AWS Graviton3 BF16** | c7g.4xlarge, 16 vCPU | $0.58 | **~$3.76** |
-| **Oracle Ampere A1** (est.) | 16 OCPU | $0.16 | **~$1.73** |
+| Platform | vCPUs | $/hr | Est. Runtime (WGS) | Est. Cost/Genome | Source |
+|----------|-------|------|---------------------|-----------------|--------|
+| GCP n2-standard-96 (x86) | 96 | $3.81 | ~79 min | ~$5.01 | [Google official](https://github.com/google/deepvariant/blob/r1.9/docs/metrics.md) |
+| **AWS Graviton3 FP32** | 16 | $0.58 | ~7.8 hr | **~$4.50** | Measured chr20 x 48.1 |
+| **AWS Graviton3 BF16** | 16 | $0.58 | ~6.5 hr | **~$3.76** | Measured chr20 x 48.1 |
 
-*Estimates based on chr20 benchmark wall times scaled by 48.1x. Graviton3 costs derived from measured benchmark data. On-demand pricing, US regions.*
+**Methodology:** Graviton3 costs are extrapolated from measured chr20 wall times (582s FP32, 487s BF16) scaled by 48.1x to estimate full genome runtime. This is a standard approximation but introduces ~15-20% uncertainty — real genome runtime may differ. Google's n2-standard-96 number is their [official published benchmark](https://github.com/google/deepvariant/blob/r1.9/docs/metrics.md). All prices are on-demand, US regions.
+
+**Key takeaway:** Graviton3 BF16 achieves **~25% lower cost per genome** than Google's 96-vCPU x86 reference, using only 16 vCPUs — but is **~5x slower** in wall-clock time. This is a cost-optimized configuration, not a speed-optimized one.
+
+### How This Compares to Other Options
+
+This project fills a specific niche. For context on alternatives:
+
+| Approach | Est. Cost/Genome | Runtime | Open Source? | Notes |
+|----------|-----------------|---------|-------------|-------|
+| **This fork (Graviton3 BF16)** | ~$3.76 | ~6.5 hr | Yes | CPU-only, no license fees |
+| **This fork (Graviton3 FP32)** | ~$4.50 | ~7.8 hr | Yes | Any ARM64 instance |
+| Google DeepVariant x86 (96 vCPU) | ~$5.01 | ~79 min | Yes | [Official benchmark](https://github.com/google/deepvariant/blob/r1.9/docs/metrics.md) |
+| NVIDIA Parabricks + GPU | <$2 + license | 8-16 min | No | Requires GPU instance + [Parabricks license](https://www.nvidia.com/en-us/clara/parabricks/) |
+| Sentieon DNAscope (Graviton) | ~$2.30 | — | No | Proprietary, [requires license](https://www.sentieon.com/) |
+
+**When to use this fork:**
+- You want open-source DeepVariant on ARM64 (no alternative exists)
+- You are cost-sensitive and can tolerate longer runtimes (batch processing, research pipelines)
+- You are running on ARM64-only infrastructure (Oracle Cloud Free Tier, Hetzner CAX, on-premise ARM servers)
+
+**When to use something else:**
+- You need fast turnaround (<1 hour): use GPU-accelerated DeepVariant or scale to more x86 cores
+- You need the absolute lowest cost and have a Sentieon license: Sentieon on Graviton is faster and cheaper
 
 ---
 
