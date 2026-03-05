@@ -13,6 +13,8 @@ DOCKER_MEM="28g"
 BATCH_SIZE=256
 REGION="chr20"
 NPROC=$(nproc)
+USE_ONNX=""
+ONNX_MODEL=""
 
 # BF16 env
 BF16_ENVS="-e ONEDNN_DEFAULT_FPMATH_MODE=BF16"
@@ -22,6 +24,9 @@ while [[ $# -gt 0 ]]; do
   case $1 in
     --image) IMAGE="$2"; shift 2 ;;
     --data-dir) DATA_DIR="$2"; shift 2 ;;
+    --batch_size) BATCH_SIZE="$2"; shift 2 ;;
+    --use_onnx) USE_ONNX="true"; shift ;;
+    --onnx_model) ONNX_MODEL="$2"; shift 2 ;;
     *) echo "Unknown arg: $1"; exit 1 ;;
   esac
 done
@@ -37,7 +42,20 @@ echo "Image: ${IMAGE}"
 echo "Region: ${REGION} (full chromosome)"
 echo "Batch size: ${BATCH_SIZE}"
 echo "BF16: $(grep -q bf16 /proc/cpuinfo 2>/dev/null && echo 'YES' || echo 'NO')"
+echo "ONNX: ${USE_ONNX:-disabled}"
+if [[ -n "${ONNX_MODEL}" ]]; then
+  echo "ONNX model: ${ONNX_MODEL}"
+fi
 echo ""
+
+# Build call_variants extra args
+CV_EXTRA_ARGS="--batch_size=${BATCH_SIZE}"
+if [[ -n "${USE_ONNX}" ]]; then
+  CV_EXTRA_ARGS="${CV_EXTRA_ARGS},--use_onnx=true"
+  if [[ -n "${ONNX_MODEL}" ]]; then
+    CV_EXTRA_ARGS="${CV_EXTRA_ARGS},--onnx_model=${ONNX_MODEL}"
+  fi
+fi
 
 run_benchmark() {
   local RUN_NAME="$1"   # e.g. fp32_run1, bf16_run2
@@ -63,7 +81,7 @@ run_benchmark() {
       --regions="${REGION}" \
       --num_shards="${NPROC}" \
       --intermediate_results_dir="/data/output/${RUN_NAME}/intermediate" \
-      --call_variants_extra_args="--batch_size=${BATCH_SIZE}" \
+      --call_variants_extra_args="${CV_EXTRA_ARGS}" \
     2>&1 | tee "${RESULTS_DIR}/${RUN_NAME}.log"
   WALL_END=$(date +%s)
   WALL_TIME=$((WALL_END - WALL_START))
@@ -86,6 +104,8 @@ run_benchmark() {
   "run": "${RUN_NAME}",
   "region": "${REGION}",
   "batch_size": ${BATCH_SIZE},
+  "use_onnx": ${USE_ONNX:-false},
+  "onnx_model": "${ONNX_MODEL}",
   "vcpus": ${NPROC},
   "wall_time_s": ${WALL_TIME},
   "make_examples_s": "${ME_TIME}",

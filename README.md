@@ -226,7 +226,8 @@ This fork modifies upstream DeepVariant v1.9.0 for ARM64 Linux compilation.
 ## Roadmap
 
 - **Phase 1 (complete):** Native ARM64 build, Docker image, GIAB-validated pipeline.
-- **Phase 2 (in progress):** BF16 on Graviton3+ (done, 1.61x). INT8 quantization (planned, 1.5-4x potential).
+- **Phase 2A (complete):** BF16 on Graviton3+ — 1.61x call_variants speedup, zero accuracy loss.
+- **Phase 2B (in progress):** INT8 quantization (est. 2x over FP32) + scaling to 32+ vCPU + fast_pipeline. Target: ~2.5 hr at ~$3/genome (vs Google's 1.3 hr at $5/genome).
 - **Phase 3 (planned):** GPU/NPU acceleration (Jetson CUDA, RK3588 NPU).
 
 ---

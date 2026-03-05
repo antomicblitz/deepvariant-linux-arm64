@@ -33,8 +33,19 @@ import glob
 import os
 
 
+def _check_ort_version():
+    """Verify ORT >= 1.17.0 for ARM64 INT8 MLAS kernel support."""
+    import onnxruntime as ort
+    from packaging.version import Version
+    if Version(ort.__version__) < Version('1.17.0'):
+        raise RuntimeError(
+            f'ONNX Runtime >= 1.17.0 required for ARM64 INT8 MLAS kernels '
+            f'(SMMLA support). Found: {ort.__version__}')
+
+
 def quantize(input_path, output_path):
     """Apply dynamic INT8 quantization to an ONNX model."""
+    _check_ort_version()
     from onnxruntime.quantization import quantize_dynamic, QuantType
 
     print(f'Quantizing {input_path} -> {output_path}')

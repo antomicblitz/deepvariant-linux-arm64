@@ -48,6 +48,16 @@ import json
 import os
 
 
+def _check_ort_version():
+    """Verify ORT >= 1.17.0 for ARM64 INT8 MLAS kernel support."""
+    import onnxruntime as ort
+    from packaging.version import Version
+    if Version(ort.__version__) < Version('1.17.0'):
+        raise RuntimeError(
+            f'ONNX Runtime >= 1.17.0 required for ARM64 INT8 MLAS kernels '
+            f'(SMMLA support). Found: {ort.__version__}')
+
+
 class DeepVariantCalibrationDataReader:
     """Reads pileup images from DeepVariant TFRecords for ONNX calibration.
 
@@ -212,6 +222,7 @@ def quantize_static(input_path, output_path, calibration_reader,
         extra_options['CalibMovingAverage'] = True
         extra_options['CalibMovingAverageConstant'] = 0.01
 
+    _check_ort_version()
     ort_quantize_static(
         input_path,
         output_path,

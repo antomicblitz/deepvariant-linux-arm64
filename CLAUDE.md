@@ -194,22 +194,54 @@ Benchmarked `KMP_AFFINITY=granularity=core,compact,1,0` + `TF_ONEDNN_USE_SYSTEM_
 
 **Diagnostic:** Run `DNNL_VERBOSE=1` to confirm ACL kernels are active in oneDNN. If output shows `ref` or `cpp` instead of `acl` primitives, BF16 env var is being silently ignored.
 
-### 2.2b BF16 Fast Math on Graviton3+ (TODO)
+### 2.2b BF16 Fast Math on Graviton3+ (DONE — 1.61x call_variants speedup)
 
-Already configured in `docker_entrypoint.sh` (`DNNL_DEFAULT_FPMATH_MODE=BF16` when `/proc/cpuinfo` shows `bf16`). Expected 20-40% call_variants speedup based on ResNet-50 proxy data from Arm developer blog. Zero accuracy risk — BF16 for multiplications, FP32 for accumulations.
+Benchmarked on AWS c7g.4xlarge (16 vCPU Graviton3, Neoverse V1). Full chr20, 2 runs averaged:
 
-**Blocker:** Need Graviton3+ hardware. Current test machines (Hetzner CAX31, GCP t2a) are Neoverse-N1 (no BF16). Requires AWS c7g (Graviton3) or c8g (Graviton4).
+| Config | make_examples | call_variants (rate) | postprocess | Total |
+|--------|--------------|---------------------|-------------|-------|
+| FP32 | 255s | 298s (0.379s/100) | 29s | **582s (9m41s)** |
+| BF16 | 278s | 185s (0.232s/100) | 24s | **487s (8m06s)** |
+
+- **call_variants speedup: 1.61x (38% faster)**
+- **Total wall speedup: 1.20x**
+- **Accuracy: BF16 = FP32** (SNP F1=0.9974, INDEL F1=0.9940 — identical)
+- DNNL_VERBOSE confirmed 196 ACL kernel references — ACL is active
+- Graviton3 FP32 is already 26% faster than GCP Neoverse-N1 FP32 (0.379 vs 0.512s/100)
+- BF16 env: `ONEDNN_DEFAULT_FPMATH_MODE=BF16`, `TF_ENABLE_ONEDNN_OPTS=1`, `OMP_NUM_THREADS=$(nproc)`
 
 **Note:** BF16 and INT8 are mutually exclusive for quantized layers. BF16 accelerates FP32 GEMM via BFMMLA; INT8 replaces those same GEMMs with INT8 SMMLA. Only mixed-precision combines both.
 
-### 2.2c INT8 Quantization of InceptionV3 (TODO)
+### 2.2c INT8 Quantization of InceptionV3 (TODO — highest priority)
 
-**Approach:** ONNX dynamic quantization first (weights only, safest), then static quantization with calibration if insufficient.
+**Goal:** Close the gap with Google's x86 reference (96 vCPU, ~1.3 hr, $5.01/genome). Current BF16 at 16 vCPU: ~6.5 hr, $3.76/genome. With INT8 + more cores (32 vCPU) + fast_pipeline: target ~2.5 hr at ~$3.00/genome.
 
-- Dynamic INT8: Expected ~1.5-2x speedup. Requires ORT >= 1.17 for ARM64 MLAS kernels.
-- Static INT8: Expected 2-4x speedup. Requires calibration dataset (500 pileup images from TFRecords). Use Percentile calibration (99.99), NOT MinMax (InceptionV3 has long-tailed activations from concatenated Inception modules).
+**Strategy: Three levers:**
+1. More cores (16 → 32 vCPU): ~1.5x wall time reduction
+2. INT8 quantization: ~2x call_variants speedup over FP32 baseline
+3. fast_pipeline (concurrent ME + CV): ~1.3x wall time reduction (conservative)
+Combined: 1.5 × 2 × 1.3 = ~3.9x potential
 
-**WARNING:** InceptionV3 is fragile to quantize. Published case showed ImageNet accuracy dropping from 74.6% to 21.0% with bad calibration. DeepVariant's 3-class task may be more robust, but must validate carefully on HG002 with GIAB stratified BED files (low-complexity, satellites, tandem repeats, homopolymers, segdups).
+**INT8 approach:** ONNX dynamic quantization first (weights only, safest), then static quantization with calibration if insufficient. Requires ORT >= 1.17.0 for ARM64 INT8 MLAS kernels with SMMLA support.
+
+- Dynamic INT8: Expected ~1.5-2x over ONNX FP32. Batch size sweep {64, 128, 256, 512} needed — INT8 SMMLA utilization scales with batch size.
+- Static INT8: Expected 2-4x over ONNX FP32. Requires calibration dataset (500 pileup images from TFRecords). Use Percentile calibration (99.99), NOT MinMax (InceptionV3 has long-tailed activations from concatenated Inception modules).
+
+**Accuracy gate:** INT8 must match BF16 baseline — SNP F1 ≥ 0.9974, INDEL F1 ≥ 0.9940 (measured on chr20 GIAB HG003). Validated with rtg vcfeval (hap.py Docker is x86-only; building from source on ARM64 is untested).
+
+**WARNING:** InceptionV3 is fragile to quantize. Published case showed ImageNet accuracy dropping from 74.6% to 21.0% with bad calibration. DeepVariant's 3-class task may be more robust, but must validate carefully.
+
+**Scaling projections (32 vCPU, c7g.8xlarge, $1.15/hr):**
+
+| Config | WGS Time | Cost/Genome | vs Google |
+|--------|----------|-------------|-----------|
+| BF16 sequential | ~3.7 hr | $4.25 | 2.8x slower, 15% cheaper |
+| INT8 (2x/FP32) sequential | ~3.4 hr | $3.91 | 2.6x slower, 22% cheaper |
+| INT8 (2x/BF16) sequential | ~2.9 hr | $3.34 | 2.2x slower, 33% cheaper |
+| INT8 + fast_pipeline | ~2.2-2.6 hr | $2.53-2.99 | 50-40% cheaper |
+| Google x86 reference | ~1.3 hr | $5.01 | baseline |
+
+**Blocker:** AWS vCPU limit is 16 — must request increase for 32+ vCPU benchmarks.
 
 ### 2.3 EfficientNet-B3 Model (DEAD END)
 
@@ -222,16 +254,17 @@ Already configured in `docker_entrypoint.sh` (`DNNL_DEFAULT_FPMATH_MODE=BF16` wh
 | InceptionV3 | 5.7G | 23.9M | 591 | **1.0x** |
 | EfficientNet-B3 | 1.8G | 12.3M | 185 | **0.31x** |
 
-### 2.4 Expected Cumulative Performance
+### 2.4 Cumulative Performance
 
-| Optimization | Impact | Status | Best Measured (16-vCPU) |
-|-------------|--------|--------|------------------------|
+| Optimization | Impact | Status | Best Measured |
+|-------------|--------|--------|---------------|
 | C++ opts (haplotype cap, flat buffer, query cache) | make_examples -10% | **DONE** | 7m33s total (8-core: 12m57s) |
-| TF warmup (dummy inference pass) | call_variants -4% | **DONE** | 7m22s total (0.512s/100) |
+| TF warmup (dummy inference pass) | call_variants -4% | **DONE** | 7m22s total (0.512s/100) on GCP 16-vCPU |
+| BF16 on Graviton3+ | **call_variants -38% (1.61x)** | **DONE** | 8m06s total (0.232s/100) on Graviton3 16-vCPU |
+| INT8 quantization (ONNX) | Est. 2x over FP32 | **TODO** | Highest priority — scripts ready |
+| Scaling to 32+ vCPU | Est. 1.5x wall time | **BLOCKED** | AWS vCPU limit = 16 |
+| fast_pipeline (concurrent ME+CV) | Est. 1.3x wall time | **TODO** | Not tested on Linux ARM64 |
 | KMP_AFFINITY + system allocator | **30% REGRESSION** | **REVERTED** | Do not re-attempt |
-| BF16 on Graviton3+ | Est. -20-40% call_variants | TODO | Needs AWS c7g |
-| INT8 dynamic quantization (ONNX) | Est. 1.5-2x call_variants | TODO | Needs validation |
-| INT8 static quantization (ONNX) | Est. 2-4x call_variants | TODO | Fragile, needs HG002 validation |
 | ~~EfficientNet-B3~~ | **3x SLOWER** | **DEAD END** | Depthwise separable conv penalty |
 | ~~MobileNetV2~~ | **Same architecture class** | **DEAD END** | Same depthwise conv penalty |
 
@@ -407,9 +440,10 @@ Apple Silicon's unified memory makes CPU→GPU data transfer free. On Linux ARM6
 - [x] TF OneDNN warmup (~4% call_variants improvement)
 - [x] EfficientNet-B3 training pipeline built and model trained — **DEAD END: 3x slower on CPU**
 - [x] KMP_AFFINITY + system allocator — **HARMFUL** (30% regression, reverted)
-- [ ] Graviton3+ benchmark with BF16 (AWS c7g, DNNL_VERBOSE to verify ACL active)
+- [x] Graviton3+ BF16: **1.61x call_variants speedup**, zero accuracy loss (measured on c7g.4xlarge)
 - [ ] INT8 quantization of InceptionV3 (ONNX dynamic first, then static with calibration)
-- [ ] INT8 accuracy validation on HG002 with GIAB stratified BED files
+- [ ] INT8 accuracy validation (gate: SNP F1 ≥ 0.9974, INDEL F1 ≥ 0.9940)
+- [ ] Scale to 32+ vCPU (requires AWS vCPU limit increase)
 
 ### v0.3.0 — GPU/NPU Acceleration (Future, Optional)
 - [ ] Jetson Orin CUDA path working
@@ -425,17 +459,17 @@ Apple Silicon's unified memory makes CPU→GPU data transfer free. On Linux ARM6
 
 ***
 
-## Cost Projections
+## Cost Projections (Measured + Projected)
 
-| Platform | Instance | $/hr | Est. chr20 Time | Est. Cost/chr20 | Est. Cost/Genome |
-|----------|----------|------|----------------|----------------|-----------------|
-| GCP n2-standard-16 (x86, baseline) | 16 vCPU | $0.76 | 14m 28s | $0.18 | $8.70 |
-| AWS Graviton3 (c7g.4xlarge, 16 vCPU) | 16 vCPU | $0.48 | ~12 min (est.) | $0.10 | $4.60 |
-| AWS Graviton4 (c8g.4xlarge, 16 vCPU) | 16 vCPU | $0.54 | ~9 min (est.) | $0.08 | $3.85 |
-| Oracle Ampere A1 (16 OCPU) | 16 OCPU | $0.16 | ~14 min (est.) | $0.04 | $1.73 |
-| RK3588 board ($100 hardware) | 8 cores | $0 (electricity) | ~45 min (est.) | ~$0.01 | ~$0.50 |
+| Platform | vCPU | $/hr | chr20 Time | WGS Time | Cost/Genome | Source |
+|----------|------|------|-----------|----------|-------------|--------|
+| Google x86 (official) | 96 | $3.81 | — | ~1.3 hr | **$5.01** | [Official](https://github.com/google/deepvariant/blob/r1.9/docs/metrics.md) |
+| **Graviton3 FP32** | 16 | $0.58 | 9m41s | ~7.8 hr | **$4.50** | Measured |
+| **Graviton3 BF16** | 16 | $0.58 | 8m06s | ~6.5 hr | **$3.76** | Measured |
+| Graviton3 INT8 (projected) | 16 | $0.58 | ~5-6 min | ~4-5 hr | ~$2.30-2.90 | Projected (2x/FP32) |
+| Graviton3 INT8 + 32 vCPU (projected) | 32 | $1.15 | ~3-4 min | ~2.2-2.9 hr | ~$2.53-3.34 | Projected |
 
-*Genome estimates: chr20 × 48.1 scaling factor. Graviton estimates assume OneDNN+ACL+BF16 optimizations. Oracle A1 estimate assumes ONNX Runtime + ACL. All estimates are pre-EfficientNet-B3 model optimization.*
+*Measured WGS times extrapolated from chr20 wall time × 48.1 (~15-20% uncertainty). Projected INT8 based on literature estimates (2x over FP32 for dynamic, 2-4x for static). Actuals will replace projections after benchmarking.*
 
 ***
 
