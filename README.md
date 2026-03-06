@@ -147,6 +147,18 @@ docker run \
 
 Check BF16 support: `grep -q bf16 /proc/cpuinfo && echo "BF16 supported"`
 
+### Optional: jemalloc Allocator
+
+Reduces malloc contention under concurrent shards. Enable with:
+
+```bash
+docker run -e DV_USE_JEMALLOC=1 ...
+```
+
+To use a custom jemalloc path: `-e DV_JEMALLOC_PATH=/path/to/libjemalloc.so`.
+
+Benchmark data: see `scripts/benchmark_jemalloc_ablation.sh`.
+
 ---
 
 ## Build from Source

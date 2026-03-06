@@ -657,7 +657,7 @@ Apple Silicon's unified memory makes CPU→GPU data transfer free. On Linux ARM6
 | **Oracle A2 INT8 ONNX 32 shards** | 32 (16 OCPU) | $0.64 | 8m09s | ~6.5 hr | **$4.19** | Measured (sequential, 32 shards) |
 | Oracle A2 INT8 ONNX 16 shards | 32 (16 OCPU) | $0.64 | 10m29s | ~8.4 hr | $5.38 | Measured (sequential, 16 shards) |
 
-*Measured WGS times extrapolated from chr20 wall time × 48.1 (~15-20% uncertainty). INT8 matches BF16 speed on Graviton3 (no additional gain); INT8 is for non-BF16 platforms. fast_pipeline at 16 vCPU is slower due to CPU contention — needs 32+ vCPU.*
+*All $/genome use formula: `chr20_wall_s × 48.1 / 3600 × $/hr`. Measured values averaged over N runs (N noted in Source column). Projected values marked with ~. WGS time extrapolation has ~15-20% uncertainty. INT8 matches BF16 speed on Graviton3 (no additional gain); INT8 is for non-BF16 platforms. fast_pipeline at 16 vCPU is slower due to CPU contention — needs 32+ vCPU.*
 
 *Graviton4 BF16 full pipeline OOM-killed on 32 GB (c8g.4xlarge). TF SavedModel uses ~26 GB RSS; forking postprocess pushes total >32 GB. Standalone CV rate measured at 0.328 s/100 (BF16). ME time (232s) taken from ONNX run. Needs c8g.8xlarge (64 GB) for full TF BF16 pipeline.*
 
