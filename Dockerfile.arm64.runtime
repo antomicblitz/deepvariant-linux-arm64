@@ -227,9 +227,10 @@ RUN python3 -m tf2onnx.convert --saved-model /opt/models/wgs --output /opt/model
     python3 -m tf2onnx.convert --saved-model /opt/models/wes --output /opt/models/wes/model.onnx --opset 17 && \
     python3 -m tf2onnx.convert --saved-model /opt/models/pacbio --output /opt/models/pacbio/model.onnx --opset 17
 
-# Docker entrypoint for ARM64 runtime optimizations
+# Docker entrypoint and autoconfig for ARM64 runtime optimizations
 COPY scripts/docker_entrypoint.sh /opt/deepvariant/bin/docker_entrypoint.sh
-RUN chmod +x /opt/deepvariant/bin/docker_entrypoint.sh
+COPY scripts/autoconfig.sh /opt/deepvariant/scripts/autoconfig.sh
+RUN chmod +x /opt/deepvariant/bin/docker_entrypoint.sh /opt/deepvariant/scripts/autoconfig.sh
 
 WORKDIR /opt/deepvariant
 

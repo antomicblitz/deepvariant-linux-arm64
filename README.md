@@ -4,6 +4,10 @@
 [![platform](https://img.shields.io/badge/platform-Linux%20ARM64-blue?logo=linux)](https://en.wikipedia.org/wiki/AArch64)
 [![accuracy](https://img.shields.io/badge/accuracy-validated%20on%20GIAB-success)](#accuracy)
 
+> This fork tracks google/deepvariant v1.9.0. Version tags use the format
+> `v{upstream}-arm64.{n}` to indicate upstream compatibility.
+> For the upstream project, see https://github.com/google/deepvariant
+
 There is no official Linux ARM64 build of [DeepVariant](https://github.com/google/deepvariant). This fork patches the build system to compile natively on aarch64, producing a working Docker image for AWS Graviton, Oracle Ampere A1, Hetzner CAX, and other ARM64 instances.
 
 ---
@@ -112,13 +116,13 @@ INT8 matches or exceeds BF16 accuracy in all tested stratification regions, incl
 
 ```bash
 # Pull pre-built image
-docker pull ghcr.io/antomicblitz/deepvariant-arm64:optimized
+docker pull ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.2
 
 # Run
 docker run \
   -v /path/to/data:/data \
   --memory=28g \
-  ghcr.io/antomicblitz/deepvariant-arm64:optimized \
+  ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.2 \
   /opt/deepvariant/bin/run_deepvariant \
   --model_type=WGS \
   --ref=/data/reference.fasta \
@@ -141,7 +145,7 @@ docker run \
   -e OMP_NUM_THREADS=$(nproc) \
   -e OMP_PROC_BIND=false \
   -e OMP_PLACES=cores \
-  ghcr.io/antomicblitz/deepvariant-arm64:optimized \
+  ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.2 \
   /opt/deepvariant/bin/run_deepvariant \
   --model_type=WGS \
   --ref=/data/reference.fasta \
@@ -170,7 +174,7 @@ Benchmark data: see `scripts/benchmark_jemalloc_ablation.sh`.
 Not sure which backend to use? Run autoconfig to get a recommended configuration:
 
 ```bash
-docker run --rm ghcr.io/antomicblitz/deepvariant-arm64:optimized \
+docker run --rm ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.2 \
   bash /opt/deepvariant/scripts/autoconfig.sh
 ```
 

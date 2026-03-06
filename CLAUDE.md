@@ -7,6 +7,7 @@ This project ports DeepVariant to Linux ARM64 with hardware-accelerated inferenc
 **Upstream repo:** [google/deepvariant](https://github.com/google/deepvariant) v1.9.0 (Bazel 5.3.0, TF 2.13.1)
 **macOS ARM64 reference:** [antomicblitz/deepvariant-macos-arm64-metal](https://github.com/antomicblitz/deepvariant-macos-arm64-metal) — all C++ optimizations transfer directly
 **License:** BSD-3-Clause (same as upstream)
+**Current release:** v1.9.0-arm64.2 (2026-03-06)
 
 ***
 
