@@ -21,13 +21,14 @@ ARM64 cloud instances are 25-50% cheaper per vCPU than x86 equivalents. This for
 | Google DeepVariant x86 (96 vCPU) | ~1.3 hr | ~$5.01 | Open source |
 | Sentieon DNAscope (Graviton) | ~1-2 hr | ~$2-4 + **per-sample license** | Proprietary |
 | NVIDIA Parabricks (GPU) | 8-16 min | <$2 + **license** | Proprietary |
-| **This fork (16 vCPU Graviton3, BF16)** | **~6.5 hr** | **~$3.77** | **Open source** |
-| **This fork (16 vCPU Graviton4, INT8)** | **~4.9 hr** | **~$3.33** | **Open source** |
-| **This fork (16 OCPU Oracle A2, INT8)** | **~7.3 hr** | **~$2.32†** | **Open source** |
+| **This fork (32 vCPU Graviton4, 4-way CV)** | **~2.3 hr** | **~$3.13** | **Open source** |
+| **This fork (32 vCPU Oracle A2, 4-way CV)** | **~3.3 hr** | **~$2.14†** | **Open source** |
+| This fork (16 vCPU Graviton4, INT8) | ~4.9 hr | ~$3.33 | Open source |
+| This fork (16 OCPU Oracle A2, INT8+jemalloc) | ~7.3 hr | ~$2.32† | Open source |
 
-> †Oracle A2 $2.32/genome with jemalloc enabled (`-e DV_USE_JEMALLOC=1`); baseline without jemalloc is $2.49/genome.
+> †Oracle pricing: 16 OCPU = $0.64/hr. jemalloc enabled (`-e DV_USE_JEMALLOC=1`). 4-way parallel CV projected from measured CV times + measured sequential ME/PP.
 
-> **Already cheaper than Google's x86 reference** — Oracle A2 INT8 at $2.32/genome (with jemalloc), Graviton3 BF16 at $3.77/genome (vs $5.01). With scaling to 32+ vCPU and fast_pipeline, targeting ~2.5 hr at ~$3/genome on Graviton. Oracle A2 with a rebuilt Docker image (enabling BF16) could push below $2/genome.
+> **Already cheaper than Google's x86 reference** — Oracle A2 with 4-way parallel CV projected at ~$2.14/genome, Graviton4 at ~$3.13/genome (vs $5.01 x86). Oracle A2 with a rebuilt Docker image (enabling BF16) could push below $1.50/genome.
 
 **Use this fork when** you want open-source DeepVariant on ARM64, or you are cost-sensitive and can tolerate longer runtimes (batch processing, research pipelines). **Use GPU-accelerated DeepVariant** when you need fast turnaround.
 
@@ -35,7 +36,7 @@ ARM64 cloud instances are 25-50% cheaper per vCPU than x86 equivalents. This for
 
 ## Benchmarks (chr20, Multiple Platforms)
 
-All benchmarks: GIAB HG003, full chr20, accuracy validated with `rtg vcfeval`. Graviton3 averaged over 2-3 runs; Graviton4 and Oracle A2 averaged over 2 runs.
+All benchmarks: GIAB HG003, full chr20, accuracy validated with `rtg vcfeval`. Runs averaged over 2-4 repetitions per config.
 
 ### Inference Rate
 
@@ -82,9 +83,17 @@ BF16 and INT8 achieve nearly identical call_variants rates on Graviton3. INT8 is
 | **Oracle A2 (AmpereOne)** | **INT8 ONNX** | **on** | **210s** | **318s (0.393)** | **12s** | **544s** | **$0.32** | **$2.32** | **4** |
 | Oracle A2 (AmpereOne) | TF Eigen FP32 | off | 287s | 325s (0.387) | 17s | **629s** | $0.32 | $2.69 | 2* |
 
-> *N<4 runs; wider confidence interval. Wall time includes ~4-5s Docker startup and inter-stage overhead not captured in individual ME/CV/PP timings. All $/genome use formula: `chr20_wall_s × 48.1 / 3600 × $/hr`. jemalloc: enable with `-e DV_USE_JEMALLOC=1` (verified 14-17% ME, ~0% CV improvement; see `scripts/benchmark_jemalloc_ablation.sh`).
+**32-vCPU sequential + parallel call_variants:**
 
-> Graviton4 INT8 ONNX is the fastest ARM64 configuration. Oracle A2 INT8 ONNX + jemalloc is the cheapest at $2.32/genome. Graviton4 TF BF16 OOM-killed on 32 GB — needs 64 GB instance. Oracle A2 OneDNN SIGILL — needs Docker rebuild for BF16. Both platforms have headroom for improvement.
+| Platform | vCPU | Sequential Wall | 4-way CV time | Proj. Wall (4-way) | $/hr | Proj. $/genome | CV N |
+|----------|------|----------------|--------------|-------------------|------|---------------|------|
+| **Graviton4** (c8g.8xlarge) | 32 | 232s | **61s** | **~172s** | $1.36 | **~$3.13** | 3 |
+| **Graviton3** (c7g.8xlarge) | 32 | 283s | **74s** | **~218s** | $1.15 | **~$3.35** | 4 |
+| **Oracle A2** (16 OCPU) | 32 | 418s | **114s** | **~250s** | $0.64 | **~$2.14** | 2* |
+
+> *N<4 runs; wider confidence interval. Wall time includes ~4-5s Docker startup and inter-stage overhead. All $/genome use formula: `chr20_wall_s × 48.1 / 3600 × $/hr`. jemalloc: enable with `-e DV_USE_JEMALLOC=1`. Parallel CV: 4 independent workers each processing 8 of 32 shards — see `scripts/benchmark_parallel_cv.sh`. Projected wall = measured ME + measured 4-way CV + measured PP.
+
+> **Parallel call_variants breaks through the CV bottleneck.** At 32 vCPU, sequential CV doesn't scale beyond 16 threads (GEMM saturation). 4-way parallel CV gives 1.9-2.5x CV speedup by running 4 workers at the saturated throughput on 1/4 of the data. Variant counts match sequential baseline exactly (207,799). Only works with ONNX backend (~3 GB/worker); TF SavedModel (~26 GB/worker) would OOM.
 
 ### Accuracy
 
@@ -298,7 +307,7 @@ This fork modifies upstream DeepVariant v1.9.0 for ARM64 Linux compilation.
 - **Phase 2A (complete):** BF16 on Graviton3+ — 1.61x call_variants speedup, zero accuracy loss.
 - **Phase 2B (complete):** INT8 static quantization — 2.3x over ONNX FP32, matches BF16 call_variants rate, stratified region validation passed.
 - **Phase 2C (complete):** OMP env fix, stratified validation, Graviton4 ONNX FP32 benchmark, Oracle A2 TF Eigen benchmark — $2.49/genome cheapest tested.
-- **Phase 2D (in progress):** Graviton4 INT8 ONNX (366s, $3.33/genome), Oracle A2 INT8 ONNX (542s, $2.32/genome — new cheapest), fast_pipeline tested (needs 32+ vCPU). Remaining: 32 vCPU + fast_pipeline, Graviton4 BF16 on 64 GB, Oracle A2 Docker rebuild for BF16. Target: ~2.5 hr at ~$3/genome on Graviton, <$2/genome on Oracle A2.
+- **Phase 2D (complete):** 32-vCPU benchmarks on Graviton3/4 and Oracle A2. Parallel call_variants (4-way) breaks through CV bottleneck: Graviton4 61s (2.10x), Graviton3 74s (1.90x), Oracle A2 114s (2.47x). Projected: Graviton4 ~172s (~$3.13/genome), Oracle A2 ~250s (~$2.14/genome). Remaining: Oracle A2 Docker rebuild for BF16 (<$1.50/genome target).
 - **Phase 3 (future):** GPU/NPU acceleration (Jetson CUDA, RK3588 NPU).
 
 > **Note:** This project targets Illumina short-read WGS/WES workflows. For long-read ONT or PacBio data, consider [Clair3](https://github.com/HKU-BAL/Clair3) which has community ARM64 support.

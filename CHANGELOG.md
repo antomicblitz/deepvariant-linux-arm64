@@ -6,6 +6,15 @@ Upstream compatibility: google/deepvariant v1.9.0
 ## [v1.9.0-arm64.2] — 2026-03-06
 
 ### Added
+- `scripts/benchmark_parallel_cv.sh` — parallel call_variants benchmark.
+  Splits 32 ME shards across N workers (2-way, 4-way), merges via
+  postprocess_variants `@N` sharded pattern. Zero DeepVariant code changes.
+- 32-vCPU benchmarks on Graviton3 (c7g.8xlarge), Graviton4 (c8g.8xlarge),
+  and Oracle A2 (16 OCPU). CV floor confirmed at 16 threads on all platforms.
+- 4-way parallel CV results: Graviton4 61s (2.10x, N=3), Graviton3 74s
+  (1.90x, N=4), Oracle A2 114s (2.47x, N=2). Variant counts match exactly.
+- Projected $/genome with parallel CV: Oracle A2 ~$2.14, Graviton4 ~$3.13,
+  Graviton3 ~$3.35.
 - `scripts/autoconfig.sh` — CPU-aware config advisor. Detects Graviton3/4,
   AmpereOne, Neoverse-N1/N2. Recommends backend, thread counts, jemalloc.
   Enforces AmpereOne OneDNN hard safety (prevents SIGILL).

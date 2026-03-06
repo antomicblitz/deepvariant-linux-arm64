@@ -286,7 +286,7 @@ INT8 matches or exceeds BF16 in all tested stratification regions. No localized 
 
 **Blocker:** AWS vCPU limit is 16 — must request increase for 32+ vCPU benchmarks.
 
-### 2.2d Phase 2D: Scaling + Platform Expansion (IN PROGRESS)
+### 2.2d Phase 2D: Scaling + Platform Expansion (COMPLETE)
 
 **Priority order (maximize progress per hour):**
 
@@ -324,9 +324,14 @@ INT8 matches or exceeds BF16 in all tested stratification regions. No localized 
    - **Best 32-vCPU config:** Sequential, 32 shards = **489s**.
    - **Scaling efficiency:** Doubling vCPUs (16→32) gives 1.11x speedup (542→489s, 10%) — poor scaling because CV is the bottleneck.
 
-7. **Graviton3/4 32 vCPU** (blocked on AWS vCPU limit increase) — BF16 TF+OneDNN may scale better than INT8 ONNX at 32 threads. Needs c7g.8xlarge or c8g.8xlarge (64 GB).
+7. **Graviton3/4 32 vCPU (DONE)** — Benchmarked on c7g.8xlarge and c8g.8xlarge (both 32 vCPU, 64 GB).
+   - **Graviton3 BF16+jemalloc 32 shards:** ME 131s, CV 141s, PP 8s, wall **283s**. $/genome = $4.35.
+   - **Graviton4 BF16+jemalloc 32 shards:** ME 100s, CV 126s, PP 5s, wall **232s**. $/genome = $4.22.
+   - **Graviton4 INT8+jemalloc 32 shards:** ME 96s, CV 129s, PP 5s, wall **233s**. $/genome = $4.24.
+   - **Key insight:** BF16 and INT8 converge at 32 vCPU (~232s) because both hit the CV floor. Backend choice is irrelevant once ME < CV. CV is the hard bottleneck — doesn't improve beyond 16 ORT threads.
+   - **Solution:** Parallel call_variants (Phase 2F) breaks through the CV floor.
 
-8. **SVE Smith-Waterman** (deferred) — Only relevant if ME becomes the bottleneck. Currently CV dominates.
+8. **SVE Smith-Waterman** (deferred) — Only relevant if ME becomes the bottleneck. With parallel CV, ME is again the bottleneck on some platforms.
 
 ### 2.2e Phase 2E: Runtime Optimizations (inter-op done, jemalloc PRELIMINARY)
 
@@ -380,6 +385,42 @@ apt-get install libjemalloc2
 -e LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libjemalloc.so.2
 ```
 
+### 2.2f Phase 2F: Parallel call_variants (DONE — breaks CV floor)
+
+**Problem:** INT8 ONNX call_variants rate doesn't improve beyond 16 ORT threads (0.358 s/100 at both 16 and 32 threads). On 32-vCPU machines, CV is the hard bottleneck — ME finishes in ~100-130s but CV takes 126-283s. No single-process optimization can break this floor.
+
+**Solution:** Split ME output shards across N independent call_variants workers running in separate Docker containers, each using `$(nproc)/N` OMP threads. Merge outputs via postprocess_variants using `@N` sharded file pattern.
+
+**Implementation:** `scripts/benchmark_parallel_cv.sh` — zero code changes to DeepVariant. Uses shard renumbering via symlinks (original shard `make_examples.tfrecord-00005-of-00032.gz` → worker-local `examples.tfrecord-00000-of-00008.gz`) and `@N` notation for both CV input and output.
+
+**Critical postprocess flags (discovered via debugging):**
+- `--regions` must match the region used in make_examples
+- `--small_model_cvo_records` must point to make_examples' small model outputs
+- Without these, postprocess partitions across the whole genome and a pre-existing CVO sanity check bug silently kills the chr20 partition worker in `multiprocessing.Pool` (producing only ~125 RefCall variants instead of 207,799)
+
+**Benchmark results (32 vCPU, INT8 ONNX, jemalloc ON):**
+
+| Platform | Sequential CV | 2-way CV | 4-way CV | 4-way Speedup | N (4-way) |
+|----------|--------------|----------|----------|---------------|-----------|
+| **Graviton4** (c8g.8xlarge) | 128s | 83s | **61s** | **2.10x** | 3 |
+| **Graviton3** (c7g.8xlarge) | 141s | 101s | **74s** | **1.90x** | 4 |
+| **Oracle A2** (16 OCPU) | 283s | 164s | **114s** | **2.47x** | 2* |
+
+*All variant counts match sequential baseline exactly (207,799).*
+
+**Projected full pipeline with 4-way parallel CV:**
+
+| Platform | ME | CV (4-way) | PP | Wall (proj) | $/hr | $/genome |
+|----------|-----|-----------|-----|-------------|------|----------|
+| **Oracle A2** | 113s | 114s | 10s | **~250s** | $0.64 | **$2.14** |
+| **Graviton4** | 100s | 61s | 6s | **~172s** | $1.36 | **$3.13** |
+| **Graviton3** | 131s | 74s | 8s | **~218s** | $1.15 | **$3.35** |
+
+**Why 4-way scales nearly linearly on Oracle A2 (2.47x) but less on Graviton (1.90-2.10x):**
+Oracle A2's sequential CV (283s at 32 ORT threads) wastes 16 threads' worth of GEMM parallelism (rate doesn't improve past 16 threads). Four 8-thread workers each operate near the GEMM saturation point. On Graviton3/4, BF16 BFMMLA kernels have higher arithmetic intensity and better thread scaling, so the single-process baseline is already more efficient, leaving less room for parallel improvement.
+
+**Memory budget:** INT8 ONNX uses ~3 GB RSS per CV worker. 4 workers × 3 GB = 12 GB + ME headroom = ~16 GB total. Safe on 64 GB instances. TF SavedModel (~26 GB per process) would OOM with 2+ workers on 64 GB — parallel CV only works with ONNX backend.
+
 ### 2.3 EfficientNet-B3 Model (DEAD END)
 
 **Attempted and measured.** Despite 3.2x fewer FLOPs, EfficientNet-B3 is **3x slower** than InceptionV3 on CPU inference. The full training pipeline was built and validated (see `TRAINING_EXPERIMENT.md`), but the speed result kills this approach.
@@ -405,8 +446,10 @@ apt-get install libjemalloc2
 | fast_pipeline at 16 vCPU | **42% SLOWER** (CPU contention) | **DONE** | 693s vs 487s sequential — needs 32+ vCPU |
 | Oracle A2 32-vCPU sequential 32 shards | **489s** (10% faster than 16 vCPU) | **DONE** | ME scales (167s), CV doesn't scale beyond 16 threads |
 | Oracle A2 32-vCPU fast_pipeline | **<1% improvement, PP broken** | **DONE** | 483s wall, PP fails on CVO ordering — not worth pursuing |
-| Graviton3/4 32 vCPU BF16 | Est. ~300s chr20 | **BLOCKED** | AWS vCPU limit = 16 |
+| Graviton3 32 vCPU BF16+jemalloc | **283s** chr20, ME=131, CV=141, PP=8 | **DONE** | $4.35/genome. CV is hard floor — doesn't improve beyond 16 threads. |
+| Graviton4 32 vCPU BF16+jemalloc | **232s** chr20, ME=100, CV=126, PP=5 | **DONE** | $4.22/genome. BF16 and INT8 converge (233s INT8). |
 | jemalloc (`DV_USE_JEMALLOC=1`) | **ME -14-17%, CV ~0%, Wall -7-9%** | **VERIFIED** | Graviton3: 487→443s (2 runs). Oracle A2: 584→544s (4 runs). Universal ARM64 benefit. |
+| **Parallel call_variants (4-way)** | **CV 2.0-2.5x faster** | **DONE** | Graviton4: CV 128→61s (2.10x). Graviton3: CV 141→74s (1.90x). Oracle A2: CV 283→114s (2.47x). |
 | ONNX inter-op parallelism | **No improvement** | **DONE** | intra-op GEMM dominates; inter-op hurts |
 | KMP_AFFINITY + system allocator | **30% REGRESSION** | **REVERTED** | Do not re-attempt |
 | ~~EfficientNet-B3~~ | **3x SLOWER** | **DEAD END** | Depthwise separable conv penalty |
@@ -578,6 +621,8 @@ These are common issues encountered when running benchmarks on cloud ARM64 insta
 | **fast_pipeline at 16 vCPU is SLOWER than sequential** | CPU contention between concurrent ME+CV degrades CV rate from 0.232 to 0.291 s/100 (25% slower), total 693s vs 487s | fast_pipeline only benefits with 32+ vCPU where ME and CV can use separate cores |
 | **ghcr.io Docker pull requires auth on fresh instances** | `docker pull ghcr.io/antomicblitz/...` fails without login on new instances | Run `echo "$PAT" \| docker login ghcr.io -u antomicblitz --password-stdin` first |
 | **GCS reference genome URL changed** | `genomics-public-data` bucket returns 404 for `.fna.gz` | Use `deepvariant/case-study-testdata` bucket instead |
+| **Docker image ONNX model is FP32, not INT8** | `/opt/models/wgs/model.onnx` (84 MB) is the FP32 ONNX model converted by tf2onnx. INT8 static model (21 MB) must be mounted from host at `/data/model_int8_static.onnx`. Using the wrong model gives 2x slower CV (0.44 vs 0.22 s/100). | Always pass `--onnx_model=/data/model_int8_static.onnx` for INT8, not the in-image model |
+| **postprocess_variants missing `--regions` with parallel CV** | Without `--regions`, postprocess partitions across the whole genome. A pre-existing CVO sanity check bug in `merge_predictions()` (line 1058) crashes the chr20 partition worker, but `multiprocessing.Pool.apply_async` silently swallows the exception — producing only ~125 RefCall variants instead of 207,799. | Always pass `--regions` and `--small_model_cvo_records` to postprocess when running parallel CV outside `run_deepvariant` |
 
 **Important: Monitor instance setup scripts.** When spinning up new cloud instances and running setup scripts (Docker install, data download, image pull), check for errors every 60 seconds for the first 5 minutes. Many failures (wrong URLs, auth issues, permission errors) happen within the first minute — waiting 10+ minutes before checking wastes time and money.
 
@@ -621,8 +666,9 @@ Apple Silicon's unified memory makes CPU→GPU data transfer free. On Linux ARM6
 - [x] fast_pipeline on Linux ARM64: works but **42% SLOWER at 16 vCPU** (693s vs 487s sequential — CPU contention)
 - [x] Oracle A2 32-vCPU scaling: sequential 32 shards = 489s, fast_pipeline broken (PP fails)
 - [x] ONNX inter-op parallelism sweep: no improvement (intra-op GEMM dominates)
-- [x] jemalloc preliminary test: ME -12%, CV -8% (2 runs only, needs 4+ for verification)
-- [ ] jemalloc verification: 4+ runs on 16-OCPU config, RSS monitoring, Graviton3 cross-test
+- [x] jemalloc: verified on Graviton3 (2 runs) and Oracle A2 (4 runs). ME -14-17%, wall -7-9%.
+- [x] Graviton3/4 32 vCPU benchmarks: c7g.8xlarge 283s, c8g.8xlarge 232s. CV floor confirmed.
+- [x] **Parallel call_variants (4-way):** CV 2.0-2.5x speedup on all 3 platforms. Graviton4 61s (N=3), Graviton3 74s (N=4), Oracle A2 114s (N=2). Variant counts match exactly. See `scripts/benchmark_parallel_cv.sh`.
 - [ ] Graviton4 BF16 full pipeline on c8g.8xlarge (64 GB) — TF OOM on 32 GB
 - [ ] Oracle A2 ACL rebuild for AmpereOne BF16 (~$1.44/genome target)
 
@@ -655,10 +701,14 @@ Apple Silicon's unified memory makes CPU→GPU data transfer free. On Linux ARM6
 | **Oracle A2 TF Eigen FP32** | 16 OCPU | $0.32 | 10m29s | ~8.4 hr | **$2.69** | Measured (2-run avg 629s, Eigen: OneDNN SIGILL)* |
 | **Graviton3 BF16 + jemalloc** | 16 | $0.58 | 7m23s | ~5.9 hr | **$3.43** | Measured (2-run avg 443s, jemalloc ON)* |
 | **Oracle A2 INT8 + jemalloc** | 16 OCPU | $0.32 | 9m04s | ~7.3 hr | **$2.32** | Measured (4-run avg 544s, OneDNN OFF) |
+| **Graviton3 BF16+jemalloc 32 shards** | 32 | $1.15 | 4m43s | ~3.8 hr | **$4.35** | Measured (2-run avg 283s, c7g.8xlarge)* |
+| **Graviton4 BF16+jemalloc 32 shards** | 32 | $1.36 | 3m52s | ~3.1 hr | **$4.22** | Measured (2-run avg 232s, c8g.8xlarge)* |
+| **Graviton4 INT8+jemalloc 32 shards** | 32 | $1.36 | 3m53s | ~3.1 hr | **$4.24** | Measured (2-run avg 233s, c8g.8xlarge)* |
+| **Oracle A2 INT8+jemalloc 32 shards** | 32 (16 OCPU) | $0.64 | 6m58s | ~5.6 hr | **$3.57** | Measured (sequential, wall=418s)* |
+| **Graviton4 4-way parallel CV** | 32 | $1.36 | ~2m52s | ~2.3 hr | **~$3.13** | Projected (ME=100+CV=61+PP=6=~172s) |
+| **Graviton3 4-way parallel CV** | 32 | $1.15 | ~3m38s | ~2.9 hr | **~$3.35** | Projected (ME=131+CV=74+PP=8=~218s) |
+| **Oracle A2 4-way parallel CV** | 32 (16 OCPU) | $0.64 | ~4m10s | ~3.3 hr | **~$2.14** | Projected (ME=113+CV=114+PP=10=~250s) |
 | Graviton3 fast_pipeline BF16 16 vCPU | 16 | $0.58 | 11m33s | ~9.3 hr | $5.37 | Measured (2-run avg 693s)* — **42% SLOWER** |
-| Graviton3 BF16 + fast_pipeline (projected) | 32 | $1.15 | ~3m30s | ~2.8 hr | ~$3.27 | Projected (32 vCPU eliminates contention) |
-| **Oracle A2 INT8 ONNX 32 shards** | 32 (16 OCPU) | $0.64 | 8m09s | ~6.5 hr | **$4.19** | Measured (sequential, 32 shards) |
-| Oracle A2 INT8 ONNX 16 shards | 32 (16 OCPU) | $0.64 | 10m29s | ~8.4 hr | $5.38 | Measured (sequential, 16 shards) |
 
 *All $/genome use formula: `chr20_wall_s × 48.1 / 3600 × $/hr`. Measured values averaged over N runs (N noted in Source column). Rows marked with \* have N<4 runs (wider confidence interval). Projected values marked with ~. WGS time extrapolation has ~15-20% uncertainty. Wall time includes ~4-5s Docker startup/inter-stage overhead beyond ME+CV+PP sum. INT8 matches BF16 speed on Graviton3 (no additional gain); INT8 is for non-BF16 platforms. fast_pipeline at 16 vCPU is slower due to CPU contention — needs 32+ vCPU.*
 
@@ -667,6 +717,8 @@ Apple Silicon's unified memory makes CPU→GPU data transfer free. On Linux ARM6
 *Oracle A2 (AmpereOne/Siryn) uses TF Eigen fallback or ONNX because OneDNN+ACL (compiled for Neoverse-N1) causes SIGILL on AmpereOne's ISA. INT8 ONNX is the fastest working backend. 32-vCPU (16 OCPU) scaling: ME benefits from 32 shards (167s vs 297s), but INT8 ONNX CV does not scale beyond ~16 ORT threads (0.358 s/100 at both 16 and 32 threads). fast_pipeline tested on Oracle A2 32-vCPU: <1% wall improvement, PP broken (CVO ordering issue) — not worth pursuing.*
 
 *jemalloc (via `DV_USE_JEMALLOC=1`): Verified benefit on both ARM64 platforms. Graviton3: ME -13.8%, CV -3.2%, wall -9.0% (2 runs each). Oracle A2: ME -17.0%, CV within noise, wall -6.9% (4 runs each). ME improvement is the dominant factor (jemalloc's per-thread arenas reduce malloc contention in make_examples' C++ allocations). CV improvement is small/zero — ONNX Runtime and TF have their own internal allocators that bypass glibc malloc.*
+
+*Parallel call_variants: 4-way parallel CV splits 32 ME shards across 4 call_variants workers in separate Docker containers (8 shards each, OMP_NUM_THREADS=nproc/4). Measured CV speedups: Graviton4 2.10x (128→61s, N=3, σ=0), Graviton3 1.90x (141→74s, N=4), Oracle A2 2.47x (283→114s, N=2). All variant counts match sequential baseline exactly (207,799). Projected wall times combine measured sequential ME+PP with measured parallel CV. See `scripts/benchmark_parallel_cv.sh`. Only works with ONNX backend (~3 GB/worker); TF SavedModel (~26 GB/worker) would OOM.*
 
 ***
 

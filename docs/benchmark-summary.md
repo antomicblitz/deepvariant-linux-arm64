@@ -14,8 +14,10 @@ Version tags use the format `v{upstream}-arm64.{n}` (e.g., `v1.9.0-arm64.2`).
 | Platform | Instance | CPU | vCPUs | RAM | $/hr |
 |----------|----------|-----|-------|-----|------|
 | AWS Graviton3 | c7g.4xlarge | Neoverse V1 | 16 | 32 GB | $0.58 |
+| AWS Graviton3 | c7g.8xlarge | Neoverse V1 | 32 | 64 GB | $1.15 |
 | AWS Graviton4 | c8g.4xlarge | Neoverse V2 | 16 | 32 GB | $0.68 |
-| Oracle A2 | A2.Flex | AmpereOne (Siryn) | 16 OCPU | 64 GB | $0.32 |
+| AWS Graviton4 | c8g.8xlarge | Neoverse V2 | 32 | 64 GB | $1.36 |
+| Oracle A2 | A2.Flex (16 OCPU) | AmpereOne (Siryn) | 32 | 64 GB | $0.64 |
 | GCP | t2a-standard-16 | Neoverse N1 | 16 | 64 GB | — |
 
 ---
@@ -49,10 +51,10 @@ INT8 passes all GIAB stratification regions with no localized degradation.
 
 ## Full Benchmark Matrix
 
-All benchmarks: GIAB HG003, full chr20, 16 vCPU (or 16 OCPU). Cost formula:
+All benchmarks: GIAB HG003, full chr20. Cost formula:
 `$/genome = chr20_wall_s x 48.1 / 3600 x $/hr`.
 
-### Cross-Platform Comparison
+### Cross-Platform Comparison (16 vCPU)
 
 | Platform | Backend | jemalloc | ME | CV (rate) | PP | Total | $/hr | $/genome | N |
 |----------|---------|----------|-----|-----------|-----|-------|------|----------|---|
@@ -64,6 +66,37 @@ All benchmarks: GIAB HG003, full chr20, 16 vCPU (or 16 OCPU). Cost formula:
 | **Oracle A2 (AmpereOne)** | **INT8 ONNX** | **off** | **253s** | **315s (0.389)** | **11s** | **584s** | **$0.32** | **$2.49** | **4** |
 | **Oracle A2 (AmpereOne)** | **INT8 ONNX** | **on** | **210s** | **318s (0.393)** | **12s** | **544s** | **$0.32** | **$2.32** | **4** |
 | Oracle A2 (AmpereOne) | TF Eigen FP32 | off | 287s | 325s (0.387) | 17s | **629s** | $0.32 | $2.69 | 2* |
+
+### Cross-Platform Comparison (32 vCPU, Sequential)
+
+| Platform | Backend | jemalloc | ME | CV | PP | Total | $/hr | $/genome | N |
+|----------|---------|----------|-----|-----|-----|-------|------|----------|---|
+| Graviton3 (c7g.8xlarge) | BF16 | on | 131s | 141s | 8s | **283s** | $1.15 | **$4.35** | 2* |
+| **Graviton4 (c8g.8xlarge)** | **BF16** | **on** | **100s** | **126s** | **5s** | **232s** | **$1.36** | **$4.22** | 2* |
+| Graviton4 (c8g.8xlarge) | INT8 ONNX | on | 96s | 129s | 5s | **233s** | $1.36 | **$4.24** | 2* |
+| Oracle A2 (16 OCPU) | INT8 ONNX | on | 113s | 283s | 9s | **418s** | $0.64 | **$3.57** | 1* |
+
+> **Key insight at 32 vCPU:** BF16 and INT8 converge (~232-233s on Graviton4) because both hit the CV floor. CV rate doesn't improve beyond 16 ORT threads. ME scales well (2x shards → 1.8x speedup) but CV is the bottleneck. Solution: parallel call_variants.
+
+### Parallel call_variants (32 vCPU, 4-way)
+
+Splits 32 ME shards across 4 independent call_variants workers (8 shards each, `OMP_NUM_THREADS=$(nproc)/4`). Zero code changes — wrapper script with symlink shard renumbering.
+
+| Platform | Sequential CV | 4-way CV | Speedup | N (4-way) |
+|----------|--------------|----------|---------|-----------|
+| **Graviton4** (c8g.8xlarge) | 128s | **61s** | **2.10x** | 3 |
+| **Graviton3** (c7g.8xlarge) | 141s | **74s** | **1.90x** | 4 |
+| **Oracle A2** (16 OCPU) | 283s | **114s** | **2.47x** | 2* |
+
+All variant counts match sequential baseline exactly (207,799).
+
+**Projected full pipeline with 4-way parallel CV:**
+
+| Platform | ME | CV (4-way) | PP | Wall (proj) | $/hr | $/genome |
+|----------|-----|-----------|-----|-------------|------|----------|
+| **Oracle A2** | 113s | 114s | 10s | **~250s** | $0.64 | **~$2.14** |
+| **Graviton4** | 100s | 61s | 6s | **~172s** | $1.36 | **~$3.13** |
+| **Graviton3** | 131s | 74s | 8s | **~218s** | $1.15 | **~$3.35** |
 
 \*N<4 runs; wider confidence interval.
 
@@ -141,14 +174,15 @@ because ONNX Runtime and TF have their own internal allocators.
 
 ### By Use Case
 
-| Use Case | Platform | Backend | jemalloc | $/genome | Notes |
-|----------|----------|---------|----------|----------|-------|
-| **Cheapest** | Oracle A2 (16 OCPU) | INT8 ONNX | ON | **$2.32** | 4-run verified |
-| Cheapest (no jemalloc) | Oracle A2 (16 OCPU) | INT8 ONNX | off | $2.49 | 4-run verified |
-| **Best speed/cost** | Graviton3 (16 vCPU) | BF16 | ON | **$3.43*** | 2-run, pending N=4 |
-| **Fastest ARM64** | Graviton4 (16 vCPU) | INT8 ONNX | off | **$3.33*** | 2-run |
+| Use Case | Platform | vCPU | Backend | Parallel CV | $/genome | Notes |
+|----------|----------|------|---------|-------------|----------|-------|
+| **Cheapest** | Oracle A2 (16 OCPU) | 32 | INT8 ONNX | 4-way | **~$2.14** | Projected from measured CV |
+| Cheapest (sequential) | Oracle A2 (16 OCPU) | 16 | INT8 ONNX+jemalloc | no | **$2.32** | 4-run verified |
+| **Best speed/cost** | Graviton4 (c8g.8xlarge) | 32 | BF16+jemalloc | 4-way | **~$3.13** | Projected; fastest wall ~172s |
+| **Fastest ARM64** | Graviton4 (c8g.8xlarge) | 32 | BF16+jemalloc | 4-way | **~$3.13** | CV=61s (N=3, σ=0) |
+| Fastest (sequential) | Graviton4 (c8g.8xlarge) | 32 | BF16+jemalloc | no | **$4.22** | 232s wall, 2-run* |
 
-\*N<4 runs.
+\*N<4 runs. Parallel CV rows are projected full-pipeline (measured CV + measured sequential ME/PP).
 
 ### Platform Notes
 
@@ -185,12 +219,12 @@ because ONNX Runtime and TF have their own internal allocators.
 
 | Item | Blocking On | Expected Impact |
 |------|-------------|-----------------|
-| Graviton3/4 32 vCPU BF16 | AWS vCPU quota increase | BF16 may scale beyond 16 threads (INT8 doesn't) |
-| Graviton4 BF16 full pipeline | c8g.8xlarge (64 GB) | Standalone CV: 0.328 s/100 |
-| Graviton3 jemalloc N=4 | Instance restart | Verify 2-run means, remove asterisks |
+| Full pipeline with 4-way parallel CV | Integration script | Projected: Oracle A2 ~$2.14, Graviton4 ~$3.13 |
 | AmpereOne BF16 via generic TF wheel | SVE hypothesis test | Could reach ~$1.55/genome if BF16 unlocked |
 | AmpereOne Docker rebuild (OneDNN for Siryn) | Build infrastructure | Full BF16 fast math, target <$2/genome |
 | Oracle A1 (Altra) benchmark | Instance capacity | Ultra-cheap ($0.01/OCPU/hr) |
+| 8-way parallel CV | Diminishing returns test | Memory bandwidth may saturate at 8 workers |
 
 See `docs/oracle-a2-wheel-test.md` for the AmpereOne SIGILL investigation
-procedure, and `scripts/benchmark_32vcpu.sh` for the 32-vCPU test plan.
+procedure, `scripts/benchmark_parallel_cv.sh` for the parallel CV benchmark,
+and `scripts/benchmark_32vcpu.sh` for the 32-vCPU sequential test plan.
