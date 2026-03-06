@@ -224,36 +224,43 @@ run_single() {
   PEAK_RSS_MB=$(sort -n "${RSS_FILE}" 2>/dev/null | tail -1 || echo "0")
   [[ -z "${PEAK_RSS_MB}" ]] && PEAK_RSS_MB=0
 
-  # Extract per-stage timing from log
-  ME_TIME=$(grep -oP 'making examples.*?took \K[0-9.]+' "${LOG}" 2>/dev/null || echo "null")
-  CV_TIME=$(grep -oP 'call_variants.*?took \K[0-9.]+' "${LOG}" 2>/dev/null || echo "null")
-  PP_TIME=$(grep -oP 'postprocess_variants.*?took \K[0-9.]+' "${LOG}" 2>/dev/null || echo "null")
+  # Extract per-stage timing from log.
+  # run_deepvariant.py wraps each step with `time`, producing `real XmY.YYYs` lines.
+  # The three `real` lines appear in order: make_examples, call_variants, postprocess.
+  # Convert "XmY.YYYs" to seconds.
+  _real_to_sec() {
+    local t="$1"
+    if [[ "${t}" =~ ^([0-9]+)m([0-9.]+)s$ ]]; then
+      python3 -c "print(round(${BASH_REMATCH[1]} * 60 + ${BASH_REMATCH[2]}, 1))" 2>/dev/null || echo "null"
+    else
+      echo "null"
+    fi
+  }
+  local _reals
+  _reals=($(grep -oP '(?<=^real\t)[0-9]+m[0-9.]+s' "${LOG}" 2>/dev/null || true))
+  ME_TIME=$(_real_to_sec "${_reals[0]:-}")
+  CV_TIME=$(_real_to_sec "${_reals[1]:-}")
+  PP_TIME=$(_real_to_sec "${_reals[2]:-}")
 
-  # Extract CV rate (s/100) from log — look for "Processed X examples in Ys"
+  # Extract CV rate (s/100) from the last "Predicted N examples" log line
   CV_RATE="null"
   if [[ "${CV_TIME}" != "null" ]]; then
-    local examples_count
-    examples_count=$(grep -oP 'Processed \K[0-9]+(?= examples)' "${LOG}" 2>/dev/null | tail -1 || echo "")
-    if [[ -n "${examples_count}" && "${examples_count}" -gt 0 ]]; then
-      CV_RATE=$(python3 -c "print(round(${CV_TIME} / ${examples_count} * 100, 4))" 2>/dev/null || echo "null")
+    local last_rate
+    last_rate=$(grep -oP '\[([0-9.]+) sec per 100\]' "${LOG}" 2>/dev/null | tail -1 | grep -oP '[0-9.]+' || echo "")
+    if [[ -n "${last_rate}" ]]; then
+      CV_RATE="${last_rate}"
     fi
   fi
 
-  # Startup overhead: time from container start to first make_examples shard output
-  # Look for first "Generating" or "examples from" line timestamp
+  # Startup overhead = wall - (ME + CV + PP)
+  # Captures container init, model loading, and jemalloc arena setup
   STARTUP_OVERHEAD="null"
-  local first_me_line
-  first_me_line=$(grep -m1 -n "Generating examples\|examples from\|Making examples" "${LOG}" 2>/dev/null || echo "")
-  if [[ -n "${first_me_line}" ]]; then
-    # Approximate: count lines before first ME output as proxy for startup time
-    # More accurate: if log has timestamps, parse them. For now, use wall - (ME+CV+PP)
-    if [[ "${ME_TIME}" != "null" && "${CV_TIME}" != "null" && "${PP_TIME}" != "null" ]]; then
-      STARTUP_OVERHEAD=$(python3 -c "
+  if [[ "${ME_TIME}" != "null" && "${CV_TIME}" != "null" && "${PP_TIME}" != "null" ]]; then
+    STARTUP_OVERHEAD=$(python3 -c "
 me=${ME_TIME}; cv=${CV_TIME}; pp=${PP_TIME}; wall=${WALL_TIME}
 overhead = wall - me - cv - pp
 print(round(max(0, overhead), 1))
 " 2>/dev/null || echo "null")
-    fi
   fi
 
   echo "  Wall: ${WALL_TIME}s  ME: ${ME_TIME}s  CV: ${CV_TIME}s  PP: ${PP_TIME}s  RSS: ${PEAK_RSS_MB}MB  Startup: ${STARTUP_OVERHEAD}s"
