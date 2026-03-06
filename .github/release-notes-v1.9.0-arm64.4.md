@@ -25,7 +25,10 @@ script is now correctly included at `/opt/deepvariant/scripts/autoconfig.sh`.
 
 \*N<4 runs. Parallel CV rows are projected (measured CV + measured sequential ME/PP).
 
-### Quick start (parallel CV)
+### Quick start — parallel call_variants (32+ vCPU, recommended)
+
+Splits call_variants into N parallel workers for 1.9-2.5x CV speedup.
+Requires ONNX backend (used automatically) and 32+ vCPU.
 
 ```bash
 docker run -e DV_AUTOCONFIG=1 -e DV_USE_JEMALLOC=1 \
@@ -40,7 +43,17 @@ docker run -e DV_AUTOCONFIG=1 -e DV_USE_JEMALLOC=1 \
   --num_cv_workers=4
 ```
 
-### Quick start (sequential, same as before)
+**Requirements:**
+- `--num_shards` must be divisible by `--num_cv_workers`
+- `--memory=56g` recommended for 4 workers (vs 28g for sequential)
+- ONNX backend only (TF SavedModel uses ~26 GB/worker — would OOM)
+
+**Additional flags:** `--regions`, `--batch_size`, `--onnx_model`,
+`--sample_name`, `--output_gvcf`, `--postprocess_cpus`,
+`--intermediate_results_dir`, `--customized_model`. Run with `--help`
+for full usage.
+
+### Quick start — sequential (16 vCPU or simpler setup)
 
 ```bash
 docker run -e DV_AUTOCONFIG=1 -e DV_USE_JEMALLOC=1 \
@@ -54,6 +67,17 @@ docker run -e DV_AUTOCONFIG=1 -e DV_USE_JEMALLOC=1 \
   --num_shards=$(nproc) \
   --call_variants_extra_args="--batch_size=256"
 ```
+
+### Smoke test results
+
+Both platforms tested with full chr20 (GIAB HG003), 32 shards, 4-way CV:
+
+| Platform | ME | CV (4-way) | PP | Total | Variants |
+|----------|-----|-----------|-----|-------|----------|
+| Graviton4 (c8g.8xlarge) | 76s | 151s | 5s | **232s** | 207,799 |
+| Oracle A2 (16 OCPU) | 131s | 233s | 9s | **373s** | 207,799 |
+
+Variant counts match sequential baseline exactly.
 
 ### Accuracy
 

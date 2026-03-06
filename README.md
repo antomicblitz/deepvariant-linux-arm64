@@ -178,6 +178,53 @@ To use a custom jemalloc path: `-e DV_JEMALLOC_PATH=/path/to/libjemalloc.so`.
 
 Benchmark data: see `scripts/benchmark_jemalloc_ablation.sh`.
 
+### Parallel call_variants (32+ vCPU)
+
+On machines with 32+ vCPUs, call_variants hits a throughput ceiling at ~16 threads (GEMM saturation). `run_parallel_cv.sh` splits the work across N independent workers for 1.9-2.5x CV speedup with zero code changes to DeepVariant.
+
+```bash
+docker run -e DV_AUTOCONFIG=1 -e DV_USE_JEMALLOC=1 \
+  -v /path/to/data:/data --memory=56g \
+  ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.4 \
+  /opt/deepvariant/scripts/run_parallel_cv.sh \
+  --model_type=WGS \
+  --ref=/data/reference.fasta \
+  --reads=/data/input.bam \
+  --output_vcf=/data/output.vcf.gz \
+  --num_shards=32 \
+  --num_cv_workers=4
+```
+
+**Requirements:**
+- ONNX backend only (TF SavedModel uses ~26 GB per worker — would OOM)
+- `--num_shards` must be divisible by `--num_cv_workers`
+- 32+ vCPU recommended (each worker gets `nproc / num_cv_workers` threads)
+- `--memory=56g` recommended for 4-way parallel (vs 28g for sequential)
+
+**How it works:** Runs make_examples with GNU parallel (same as `run_deepvariant`), splits output shards into N groups via symlinks, launches N call_variants processes with scoped `OMP_NUM_THREADS`, then runs postprocess_variants on the merged outputs.
+
+<details>
+<summary>All run_parallel_cv.sh options</summary>
+
+| Flag | Required | Default | Description |
+|------|----------|---------|-------------|
+| `--model_type` | Yes | — | WGS, WES, PACBIO, ONT_R104, etc. |
+| `--ref` | Yes | — | Reference FASTA path |
+| `--reads` | Yes | — | Input BAM/CRAM path |
+| `--output_vcf` | Yes | — | Output VCF path |
+| `--num_shards` | Yes | — | Number of make_examples shards |
+| `--num_cv_workers` | No | 4 | Parallel CV workers |
+| `--regions` | No | — | Genomic region (e.g., chr20) |
+| `--batch_size` | No | 256 | CV batch size |
+| `--onnx_model` | No | auto | Custom ONNX model path |
+| `--customized_model` | No | — | Custom model checkpoint |
+| `--sample_name` | No | — | Sample name for VCF header |
+| `--output_gvcf` | No | — | Output gVCF path |
+| `--postprocess_cpus` | No | num_shards | CPUs for postprocess |
+| `--intermediate_results_dir` | No | tmpdir | Working directory |
+
+</details>
+
 ### Auto-configure for your ARM64 CPU
 
 Not sure which backend to use? Run autoconfig to get a recommended configuration:

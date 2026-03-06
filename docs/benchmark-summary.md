@@ -92,7 +92,17 @@ Splits 32 ME shards across 4 independent call_variants workers (8 shards each, `
 
 All variant counts match sequential baseline exactly (207,799).
 
-**Projected full pipeline with 4-way parallel CV:**
+**Measured full pipeline with `run_parallel_cv.sh`** (single-run smoke test, no jemalloc):
+
+| Platform | ME | CV (4-way) | PP | Wall | $/hr | $/genome |
+|----------|-----|-----------|-----|------|------|----------|
+| **Graviton4** (c8g.8xlarge) | 76s | 151s | 5s | **232s** | $1.36 | **$4.22** |
+| **Oracle A2** (16 OCPU) | 131s | 233s | 9s | **373s** | $0.64 | **$3.19** |
+
+> CV times in the full pipeline are higher than isolated benchmarks due to per-worker
+> ONNX session startup overhead (~20-30s). With jemalloc, ME times improve 14-17%.
+
+**Projected full pipeline with 4-way parallel CV** (from isolated CV benchmarks + sequential ME/PP):
 
 | Platform | ME | CV (4-way) | PP | Wall (proj) | $/hr | $/genome |
 |----------|-----|-----------|-----|-------------|------|----------|
@@ -104,6 +114,9 @@ All variant counts match sequential baseline exactly (207,799).
 
 > Wall time includes ~4-5s Docker startup and inter-stage overhead not captured
 > in individual ME/CV/PP timings. jemalloc: enable with `-e DV_USE_JEMALLOC=1`.
+
+User-facing wrapper: `scripts/run_parallel_cv.sh` (runs inside Docker container).
+See README.md for usage instructions.
 
 ### Graviton3 Pipeline Breakdown (16 vCPU)
 
