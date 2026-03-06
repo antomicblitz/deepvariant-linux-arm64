@@ -7,7 +7,7 @@ v1.9.0 that adds native ARM64 Linux support with hardware-accelerated inference.
 The fork produces a Docker image for AWS Graviton, Oracle Ampere, and other
 ARM64 instances.
 
-Version tags use the format `v{upstream}-arm64.{n}` (e.g., `v1.9.0-arm64.2`).
+Version tags use the format `v{upstream}-arm64.{n}` (e.g., `v1.9.0-arm64.3`).
 
 ### Tested Platforms
 

@@ -125,13 +125,13 @@ INT8 matches or exceeds BF16 accuracy in all tested stratification regions, incl
 
 ```bash
 # Pull pre-built image
-docker pull ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.2
+docker pull ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.3
 
 # Run
 docker run \
   -v /path/to/data:/data \
   --memory=28g \
-  ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.2 \
+  ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.3 \
   /opt/deepvariant/bin/run_deepvariant \
   --model_type=WGS \
   --ref=/data/reference.fasta \
@@ -154,7 +154,7 @@ docker run \
   -e OMP_NUM_THREADS=$(nproc) \
   -e OMP_PROC_BIND=false \
   -e OMP_PLACES=cores \
-  ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.2 \
+  ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.3 \
   /opt/deepvariant/bin/run_deepvariant \
   --model_type=WGS \
   --ref=/data/reference.fasta \
@@ -183,7 +183,7 @@ Benchmark data: see `scripts/benchmark_jemalloc_ablation.sh`.
 Not sure which backend to use? Run autoconfig to get a recommended configuration:
 
 ```bash
-docker run --rm ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.2 \
+docker run --rm ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.3 \
   bash /opt/deepvariant/scripts/autoconfig.sh
 ```
 

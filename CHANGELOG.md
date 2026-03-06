@@ -3,7 +3,7 @@
 All notable changes to the DeepVariant ARM64 fork are documented here.
 Upstream compatibility: google/deepvariant v1.9.0
 
-## [v1.9.0-arm64.2] — 2026-03-06
+## [v1.9.0-arm64.3] — 2026-03-06
 
 ### Added
 - `scripts/benchmark_parallel_cv.sh` — parallel call_variants benchmark.
@@ -15,6 +15,16 @@ Upstream compatibility: google/deepvariant v1.9.0
   (1.90x, N=4), Oracle A2 114s (2.47x, N=2). Variant counts match exactly.
 - Projected $/genome with parallel CV: Oracle A2 ~$2.14, Graviton4 ~$3.13,
   Graviton3 ~$3.35.
+
+### Changed
+- Corrected $/genome calculations: Graviton4 ONNX FP32 $5.07→$5.47,
+  Graviton4 BF16 standalone ~$4.31→~$4.65.
+- INT8 Graviton3 rate updated to 3-run average: 0.238→0.237 s/100.
+- Removed stale status labels and superseded data across all docs.
+
+## [v1.9.0-arm64.2] — 2026-03-06
+
+### Added
 - `scripts/autoconfig.sh` — CPU-aware config advisor. Detects Graviton3/4,
   AmpereOne, Neoverse-N1/N2. Recommends backend, thread counts, jemalloc.
   Enforces AmpereOne OneDNN hard safety (prevents SIGILL).
