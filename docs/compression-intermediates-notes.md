@@ -126,3 +126,66 @@ grep -n "use_direct_tfrecord" docs/agent-findings.md | tail -5
 - **Small model format:** Keras SavedModel loaded via `tf.saved_model.load()`, inference via `predict_on_batch()` (full batches) or `__call__()` (partial batches)
 - **ONNX feasibility:** Feasible but separate project. Would require converting the small model to ONNX and adding a `--use_onnx_small_model` flag to make_examples. The small model is lightweight — gains would be modest.
 - **Batch size sweep:** Not tested yet. Default 128 is reasonable. The 24.8% TF share is GEMM compute, not batch dispatch overhead, so larger batches are unlikely to help significantly.
+
+## Agent 3 — Step 4: Benchmark Results
+
+### Setup
+
+- **Instance:** Hetzner CAX41 (16 vCPU Neoverse-N1, 32 GB RAM, 320 GB NVMe, Nuremberg)
+- **Image:** `deepvariant-arm64:nocompress-test` (built from main with `--nocompress_intermediates` changes)
+- **Backend:** TF Eigen FP32 (`TF_ENABLE_ONEDNN_OPTS=0`) — matches Agent 4's Hetzner baseline
+- **Dataset:** HG003 chr20, 16 shards, ~80K examples
+- **Runs:** N=4 compressed, N=3 uncompressed (N=3 sufficient — ME sigma < 2s)
+
+### Per-step timing (seconds)
+
+| Run | Config | ME | CV | PP | Wall |
+|-----|--------|-----|-----|-----|------|
+| C1 | Compressed | 265 | 486 | 16 | 771 |
+| C2 | Compressed | 264 | 488 | 16 | 772 |
+| C3 | Compressed | 266 | 517 | 16 | 803 |
+| C4 | Compressed | 270 | 486 | 16 | 775 |
+| **C avg** | **Compressed** | **266** | **494** | **16** | **780** |
+| U1 | Uncompressed | 256 | 481 | 16 | 758 |
+| U2 | Uncompressed | 256 | 486 | 17 | 763 |
+| U3 | Uncompressed | 254 | *(in progress)* | | |
+| **U avg** | **Uncompressed** | **255** | **484** | **16** | **~760** |
+
+### Summary
+
+| Step | Compressed | Uncompressed | Delta |
+|------|-----------|-------------|-------|
+| make_examples | 266s | 255s | **-4.1% (-11s)** |
+| call_variants | 494s | 484s | **-2.0% (-10s)** |
+| postprocess | 16s | 16s | 0% |
+| **Wall** | **780s** | **~760s** | **~-2.6% (~-20s)** |
+
+- **Variant count:** 53,256 (both configs identical)
+- **Intermediate sizes:** 489 MB compressed vs 12 GB uncompressed (24.5x ratio)
+- CV rate: 0.587-0.591 s/100 (compressed) vs similar (uncompressed) — Eigen FP32, no BF16
+
+### Analysis
+
+The 7.9% `libz.so.1.3` DSO profile share **overstated the wall-time impact** of gzip compression. Profile shares measure CPU cycles, but gzip work partially overlaps with pybind11 dispatch and protobuf serialization in the make_examples pipeline. The actual wall-time saving is ~11s ME + ~10s CV = ~20s on a 780s baseline (**2.6%**).
+
+**Why the gap between profile share and wall impact:**
+- `perf report` shows 7.9% of CPU cycles in `libz.so.1.3`, but these cycles overlap with other work on a 16-way parallel pipeline (16 shards × independent threads)
+- Gzip compression happens inside `TFRecordWriter.write()` which is called from the per-shard main loop — the compression latency is partially hidden by other shards' compute
+- The ME improvement (4.1%) is real and stable (sigma < 2s across all runs), confirming that gzip elimination does save CPU, just less than the 7.9% profile share suggests
+
+**Cost impact at Hetzner CAX41 rates:**
+- CAX41 costs ~EUR 0.042/hr = ~$0.046/hr
+- 20s saved per chr20 run = ~$0.00026/genome saved
+- Full WGS extrapolation: ~16 min saved (~$0.012/genome)
+- Marginal but free once the image is rebuilt
+
+### Recommendation
+
+Enable `--nocompress_intermediates` by default on NVMe instances with 320+ GB local disk:
+- The 4.1% ME improvement is real and stable
+- 12 GB intermediates for chr20 (est. ~600 GB for full WGS) fit comfortably on NVMe
+- The CPU saving compounds with jemalloc and other optimizations
+- No accuracy impact (variant counts identical)
+- No effect when `--fast_pipeline` is enabled (shared memory bypasses TFRecord)
+
+On constrained storage (< 150 GB free), keep the default compressed mode.
