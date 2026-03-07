@@ -175,9 +175,12 @@ docker run \
   --call_variants_extra_args="--batch_size=256"
 ```
 
-`DV_AUTOCONFIG=1` detects Graviton3/4, AmpereOne, and Neoverse-N1/N2, and applies the right backend, thread counts, and safety settings. User-provided env vars always take precedence.
+`DV_AUTOCONFIG=1` detects Graviton3/4, AmpereOne, and Neoverse-N1/N2, and applies the right backend, thread counts, and safety settings. User-provided env vars always take precedence. On non-BF16 platforms (Oracle A1, A2, Hetzner CAX), autoconfig automatically uses the **pre-installed INT8 ONNX model** (`/opt/models/wgs/model_int8_static.onnx`, 21 MB) — no manual quantization needed.
 
-### BF16 (Graviton3+, 38% faster CV)
+<details>
+<summary>Manual backend override (BF16 or custom INT8)</summary>
+
+#### BF16 (Graviton3+, 38% faster CV)
 
 ```bash
 docker run -v /path/to/data:/data --memory=28g \
@@ -190,10 +193,12 @@ docker run -v /path/to/data:/data --memory=28g \
   --call_variants_extra_args="--batch_size=256"
 ```
 
-### INT8 (all ARM64 platforms, 2.3x faster CV)
+#### Custom INT8 quantization (WES, PacBio, or your own calibration data)
+
+The Docker image ships with a pre-quantized WGS INT8 model. To quantize a different model:
 
 ```bash
-# Step 1: Run the pipeline normally (intermediates are reused for calibration)
+# Step 1: Run the pipeline to generate calibration TFRecords
 docker run -v /path/to/data:/data --memory=28g \
   ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.5 \
   /opt/deepvariant/bin/run_deepvariant \
@@ -206,20 +211,20 @@ docker run -v /path/to/data:/data \
   ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.5 \
   quantize_model \
   --input /opt/models/wgs/model.onnx \
-  --output /data/model_int8_static.onnx \
+  --output /data/model_int8_custom.onnx \
   --tfrecord_dir /data/intermediate/make_examples \
   --saved_model_dir /opt/models/wgs
 
-# Step 3: All subsequent runs use INT8
+# Step 3: Use the custom INT8 model
 docker run -v /path/to/data:/data --memory=28g \
   ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.5 \
   /opt/deepvariant/bin/run_deepvariant \
   --model_type=WGS --ref=/data/reference.fasta --reads=/data/input.bam \
   --output_vcf=/data/output.vcf.gz --num_shards=$(nproc) \
-  --call_variants_extra_args="--batch_size=256,--use_onnx=true,--onnx_model=/data/model_int8_static.onnx"
+  --call_variants_extra_args="--batch_size=256,--use_onnx=true,--onnx_model=/data/model_int8_custom.onnx"
 ```
 
-> **Shortcut:** The pre-quantized INT8 model (21 MB) is attached to the [GitHub Release](https://github.com/antomicblitz/deepvariant-linux-arm64/releases). Download it and skip Steps 1-2.
+</details>
 
 ### Parallel call_variants (16+ vCPU)
 
