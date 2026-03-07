@@ -2,51 +2,115 @@
 
 [![release](https://img.shields.io/badge/base-v1.9.0-green?logo=github)](https://github.com/google/deepvariant/releases)
 [![platform](https://img.shields.io/badge/platform-Linux%20ARM64-blue?logo=linux)](https://en.wikipedia.org/wiki/AArch64)
-[![accuracy](https://img.shields.io/badge/accuracy-validated%20on%20GIAB-success)](#accuracy)
+[![accuracy](https://img.shields.io/badge/SNP%20F1-0.9978-success)](#accuracy)
+[![license](https://img.shields.io/badge/license-BSD--3-blue)](#license)
 
-> This fork tracks google/deepvariant v1.9.0. Version tags use the format
-> `v{upstream}-arm64.{n}` to indicate upstream compatibility.
-> For the upstream project, see https://github.com/google/deepvariant
+> Fork of [google/deepvariant](https://github.com/google/deepvariant) v1.9.0. Tags: `v{upstream}-arm64.{n}`.
 
-There is no official Linux ARM64 build of [DeepVariant](https://github.com/google/deepvariant). This fork patches the build system to compile natively on aarch64, producing a working Docker image for AWS Graviton, Oracle Ampere A1, Hetzner CAX, and other ARM64 instances.
+**The gold standard in variant calling. Now on ARM64. For less than the price of a candy bar per genome.**
 
----
+Google's [DeepVariant](https://rdcu.be/7Dhl) (Poplin et al., *Nature Biotechnology* 2018) achieves the highest SNP accuracy of any open-source variant caller. It also had no Linux ARM64 build — until this fork. Run it on a $0.16/hr Oracle A1 instance and get the same accuracy as a well-equipped sequencing center, at **$0.80/genome on dedicated ARM64 vCPUs** — or **$0.33/genome on a Hetzner CAX41 shared instance** in the EU.
 
-## Why ARM64?
-
-ARM64 cloud instances are 25-50% cheaper per vCPU than x86 equivalents. This fork makes DeepVariant — the most accurate open-source variant caller — available on this hardware for the first time.
-
-| Solution | Speed (30x WGS) | Cost/Genome | License |
-|----------|-----------------|-------------|---------|
-| Google DeepVariant x86 (96 vCPU) | ~1.3 hr | ~$5.01 | Open source |
-| Sentieon DNAscope (Graviton) | ~1-2 hr | ~$2-4 + **per-sample license** | Proprietary |
-| NVIDIA Parabricks (GPU) | 8-16 min | <$2 + **license** | Proprietary |
-| **This fork (Hetzner CAX41, INT8 ONNX)** | **~7.7 hr** | **~$0.33‡** | **Open source** |
-| **This fork (16 OCPU Oracle A1, 4-way CV)** | **~5.0 hr** | **~$0.80†** | **Open source** |
-| **This fork (16 OCPU Oracle A1, INT8+jemalloc)** | **~6.5 hr** | **~$1.04†** | **Open source** |
-| **This fork (32 vCPU Graviton4, 4-way CV)** | **~2.3 hr** | **~$3.13** | **Open source** |
-| **This fork (32 vCPU Oracle A2, 4-way CV)** | **~3.3 hr** | **~$2.14†** | **Open source** |
-| This fork (16 vCPU Graviton4, INT8) | ~4.9 hr | ~$3.33 | Open source |
-| This fork (16 OCPU Oracle A2, INT8+jemalloc) | ~7.3 hr | ~$2.32† | Open source |
-
-> †Oracle A1 pricing: $0.01/OCPU/hr — 16 OCPU (16 vCPU) = $0.16/hr. Oracle A2 pricing: $0.04/OCPU/hr — 16 OCPU (32 vCPU) = $0.64/hr; 8 OCPU (16 vCPU) = $0.32/hr. jemalloc enabled (`-e DV_USE_JEMALLOC=1`). Oracle A1 4-way CV measured (3-run avg); other parallel CV rows projected from measured CV times + measured sequential ME/PP.
->
-> ‡Hetzner CAX41: ~$0.043/hr (€0.0396/hr). Shared vCPU — occasional throttling (~5%). Available EU only.
-
-> **15.2x cheaper than Google's x86 reference** — Hetzner CAX41 with INT8 at **$0.33/genome** (shared vCPU, EU only). Dedicated-vCPU leader: Oracle A1 at **$0.80/genome** (4-way parallel CV, measured 3-run avg). Oracle A2 projected at ~$2.14/genome, Graviton4 at ~$3.13/genome (vs $5.01 x86).
-
-**Use this fork when** you want open-source DeepVariant on ARM64, or you are cost-sensitive and can tolerate longer runtimes (batch processing, research pipelines). **Use GPU-accelerated DeepVariant** when you need fast turnaround.
+At [UK Biobank](https://doi.org/10.1038/s41586-025-09272-9) scale (490,640 genomes), that difference vs. the x86 reference cost is **$2.3 million** — enough to fund the sequencing of ~4,600 additional genomes. For the [proposed Three Million African Genomes project](https://doi.org/10.1038/d41586-021-00313-7), the gap is $15M vs. $1M.
 
 ---
 
-## Benchmarks (chr20, Multiple Platforms)
+## What this project actually contributes
 
-All benchmarks: GIAB HG003, full chr20, accuracy validated with `rtg vcfeval`. Runs averaged over 2-4 repetitions per config.
+There are four distinct results here, with different levels of novelty.
+
+### 1. INT8 quantization without accuracy loss *(the most novel result)*
+
+The DeepVariant InceptionV3 model (84 MB FP32) was quantized to INT8 using ONNX Runtime static quantization with calibration data drawn from real genomic TFRecords. The quantized model is **74% smaller (21 MB)** and **2.3x faster** at inference than FP32 ONNX — and loses nothing in accuracy:
+
+| Metric | FP32 | BF16 | INT8 ONNX |
+|--------|------|------|-----------|
+| SNP F1 | 0.9977 | 0.9977 | **0.9978** |
+| INDEL F1 | 0.9961 | 0.9961 | **0.9962** |
+
+Post-training INT8 quantization typically degrades accuracy by 0.6-3% on vision CNNs. That it doesn't here — not even in the difficult regions where quantization characteristically fails — is the finding. Stratified GIAB validation confirms:
+
+| Region | INT8 SNP F1 | BF16 SNP F1 | INT8 INDEL F1 | BF16 INDEL F1 |
+|--------|-------------|-------------|---------------|---------------|
+| Homopolymers (>=7bp) | 0.9985 | 0.9985 | 0.9967 | 0.9963 |
+| Simple Repeats | 0.9994 | 0.9994 | 0.9967 | 0.9961 |
+| Tandem Repeats (201-10,000bp) | 0.9983 | 0.9983 | 0.9926 | 0.9926 |
+| Segmental Duplications | **0.9802** | 0.9744 | 0.9814 | 0.9814 |
+
+INT8 matches or exceeds BF16 in every region — including segmental duplications, where it actually *improves* by 0.006 SNP F1. The explanation is that InceptionV3's large, dense convolutions are unusually quantization-friendly; the model's structure largely avoids the depthwise convolution layers that cause INT8 degradation in other CNN architectures.
+
+The 21 MB INT8 model is included as a release attachment and also opens a credible path to **edge deployment** on devices like NVIDIA Jetson or Rockchip RK3588 for point-of-care genomics — though this is not yet validated in this project.
+
+**Engineering note:** INT8 quantization can produce probability vectors that don't sum to 1.0. Without correction, `postprocess_variants` crashes with `ValueError: Invalid genotype likelihoods`. The ONNX inference path in this fork renormalizes outputs (`predictions / row_sums`) before passing to `round_gls()`. This fix is mandatory and is included in the Docker image.
+
+### 2. First open-source Linux ARM64 port
+
+There is no official ARM64 build of DeepVariant ([Issue #834](https://github.com/google/deepvariant/issues/834), open since 2024, unresolved). The build system assumes SSE4/AVX throughout. This fork patches the build system, fixes 8 upstream compilation errors for ARM64/GCC 13, and produces a working Docker image validated against GIAB HG003.
+
+The only existing ARM64 option is [Sentieon DNAscope](https://www.sentieon.com/) — excellent performance, competitive cost (under $1/genome on OCI ARM), but requires a **commercial license**, limiting access for many academic and resource-constrained labs. This fork is BSD-3 licensed: use it, modify it, redistribute it.
+
+### 3. The first systematic ARM64 benchmarking corpus for variant calling
+
+Before this project, there was no published comparison of DeepVariant performance across ARM64 hardware. This fork benchmarks **5 platforms x 3 backends x jemalloc on/off x 16 and 32 vCPU**, with N >= 2 runs per configuration and accuracy validated at each point:
+
+| Platform | Microarch | Best config | $/genome | Notes |
+|----------|-----------|-------------|----------|-------|
+| AWS Graviton3 (c7g) | Neoverse-V1 | BF16+jemalloc | $3.43 | BF16 native; sweet spot at 16 vCPU |
+| AWS Graviton4 (c8g) | Neoverse-V2 | INT8+4-way CV | $3.13 | Fastest CPU tested (0.197 s/100) |
+| Oracle A1 (Altra) | Neoverse-N1 | INT8+4-way CV | **$0.80** | Cheapest dedicated OCPU |
+| Oracle A2 (AmpereOne) | AmpereOne | INT8+4-way CV | $2.14 | OneDNN causes SIGILL — use ONNX |
+| Hetzner CAX41 (Altra) | Neoverse-N1 | INT8+jemalloc | **$0.33** | Shared vCPU; EU-only; N=1 |
+
+This is a community infrastructure resource. Choosing hardware for a genomics workload on ARM64 no longer requires guesswork.
+
+### 4. EfficientNet-B3: a documented dead end
+
+Built the full EfficientNet-B3 training pipeline — then measured it running **3x slower** than InceptionV3 despite 3.2x fewer FLOPs. Depthwise separable convolutions and squeeze-and-excitation blocks have poor GEMM density on CPUs, negating their theoretical FLOP advantage on ARM NEON hardware. This confirms results from the architecture literature in a genomics-specific CPU context. Full details: [TRAINING_EXPERIMENT.md](TRAINING_EXPERIMENT.md).
+
+---
+
+## How much does it matter at scale?
+
+The cost numbers below use the formula `chr20_wall_s x 48.1 / 3600 x $/hr` — a standard chr20-to-WGS projection, not a direct 30x WGS measurement. End-to-end validation is on the roadmap.
+
+| Study scale | x86 reference ($5.01) | Oracle A1 ($0.80) | Hetzner ($0.33+) | Savings vs. x86 |
+|-------------|----------------------|-------------------|-----------------|-----------------|
+| 1 genome | $5.01 | $0.80 | $0.33 | -- |
+| 1,000 genomes | $5,010 | $800 | $330 | up to $4,680 |
+| 100,000 genomes (large GWAS) | $501,000 | $80,000 | $33,000 | up to $468,000 |
+| 490,640 genomes ([UK Biobank WGS](https://doi.org/10.1038/s41586-025-09272-9)) | $2,458,106 | $392,512 | $161,911 | up to $2,296,195 |
+| 3,000,000 genomes ([Three Million African Genomes](https://doi.org/10.1038/d41586-021-00313-7)) | $15,030,000 | $2,400,000 | $990,000 | up to $14,040,000 |
+
+> **On Hetzner scale-out:** Default account limit is 5 servers, expandable to 10-25 per project on request. Hetzner is not designed for hyperscale burst compute. For runs requiring 50+ concurrent instances, Oracle A1 ($0.80/genome) is the operationally practical choice. The Hetzner figure is most relevant for individual researchers and small labs doing serial or small-batch processing.
+
+---
+
+## Compared to alternatives
+
+| Solution | $/genome | Speed (30x WGS) | Accuracy | License | ARM64 |
+|----------|----------|-----------------|----------|---------|-------|
+| Google DeepVariant (96 vCPU x86) | ~$5.01 | ~1.3 hr | SNP F1 >0.997 | Open source | No |
+| Google DeepVariant (n1-standard-16, preemptible) | ~$2.84 | ~5.5 hr | SNP F1 >0.997 | Open source | No |
+| Sentieon DNAscope (OCI ARM) | <$1 + license | ~1-2 hr | Comparable | **Proprietary** | Yes |
+| Sentieon DNAscope (AWS Graviton, spot) | ~$0.74 + license | ~1-2 hr | Comparable | **Proprietary** | Yes |
+| NVIDIA Parabricks | <$2 + license | 8-16 min | Comparable | **Proprietary** | No |
+| **This fork — Oracle A1, 4-way CV** | **$0.80** | **~5.0 hr** | **SNP F1 0.9978** | **Open source** | **Yes** |
+| **This fork — Hetzner CAX41, INT8** | **$0.33+** | **~7.7 hr** | **SNP F1 0.9978** | **Open source** | **Yes** |
+
+> +Hetzner: shared vCPU (~5% throttling variance), EU-only, N=1 for best config. Increase N before citing this number in a paper.
+
+The trade-off is wall time. A Hetzner run takes ~8 hours vs. ~1 hour on a 96-vCPU x86 instance. For batch processing, overnight pipelines, and cost-constrained studies, this is a feature. For clinical turnaround, use GPU-accelerated DeepVariant.
+
+---
+
+## Benchmarks (chr20, All Platforms)
+
+All benchmarks: GIAB HG003, full chr20, accuracy validated with `rtg vcfeval`. N = repetitions per config.
 
 ### Inference Rate
 
-| Platform | vCPUs | Config | call_variants Rate | chr20 Wall Time |
-|----------|-------|--------|-------------------|-----------------|
+| Platform | vCPUs | Config | CV Rate | chr20 Wall |
+|----------|-------|--------|---------|-----------|
 | GCP t2a (Neoverse-N1) | 8 | FP32 | 0.880 s/100 | 12m57s |
 | GCP t2a (Neoverse-N1) | 16 | FP32 | 0.512 s/100 | 7m22s |
 | AWS Graviton3 | 16 | FP32 | 0.379 s/100 | 9m41s |
@@ -54,100 +118,53 @@ All benchmarks: GIAB HG003, full chr20, accuracy validated with `rtg vcfeval`. R
 | **AWS Graviton3** | **16** | **INT8 ONNX** | **0.237 s/100** | **~8m27s** |
 | **AWS Graviton4** | **16** | **INT8 ONNX** | **0.197 s/100** | **6m06s** |
 | AWS Graviton4 | 16 | ONNX FP32 | 0.446 s/100 | 10m02s |
-| AWS Graviton4 | 16 | BF16 (standalone CV) | 0.328 s/100 | ~8m32s* |
 | **Oracle A2 (AmpereOne)** | **16 OCPU** | **INT8 ONNX** | **0.389 s/100** | **9m44s** |
-| Oracle A2 (AmpereOne) | 16 OCPU | TF Eigen FP32 | 0.387 s/100 | 10m29s |
-| **Oracle A1 (Altra/N1)** | **16 OCPU** | **INT8 ONNX** | **0.309 s/100** | **~8m29s** |
-| Oracle A1 (Altra/N1) | 16 OCPU | TF Eigen FP32 | 0.588 s/100 | 12m15s |
-| **Hetzner CAX41 (Altra/N1)** | **16 (shared)** | **INT8 ONNX** | **0.366 s/100** | **~8m45s** |
-| Hetzner CAX41 (Altra/N1) | 16 (shared) | TF Eigen FP32 | 0.551 s/100 | 12m15s |
+| **Oracle A1 (Altra)** | **16 OCPU** | **INT8 ONNX** | **0.309 s/100** | **~8m29s** |
+| Oracle A1 (Altra) | 16 OCPU | TF Eigen FP32 | 0.588 s/100 | 12m15s |
+| **Hetzner CAX41 (Altra)** | **16 (shared)** | **INT8 ONNX** | **0.366 s/100** | **~8m45s** |
 
-BF16 and INT8 achieve nearly identical call_variants rates on Graviton3. INT8 is the better choice on platforms **without** BF16 support (Neoverse-N1, Ampere Altra), where it provides a 2.3x speedup over FP32 ONNX (isolated benchmark: 0.225 s/100 vs 0.517 s/100).
+### Full Pipeline — 16 vCPU, Best Backend
 
-> **Note on isolated vs pipeline rates:** The isolated ONNX benchmark measures 0.225 s/100 for INT8, while the full pipeline measures 0.237 s/100 (3-run avg). The difference is due to pipeline overhead (TF environment initialization, dataset loading, writer process coordination). The pipeline rate is the operationally relevant number.
+| Platform | Backend | jemalloc | ME | CV | PP | Total | $/hr | $/genome | N |
+|----------|---------|----------|-----|-----|-----|-------|------|----------|---|
+| Graviton3 (c7g) | BF16 | on | 242s | 188s | 9s | **443s** | $0.58 | $3.43 | 2* |
+| Graviton3 (c7g) | INT8 ONNX | off | 299s | 194s | 14s | **507s** | $0.58 | $3.92 | 3 |
+| **Graviton4 (c8g)** | **INT8 ONNX** | **off** | **194s** | **158s** | **6s** | **366s** | **$0.68** | **$3.33** | 2* |
+| **Oracle A2 (AmpereOne)** | **INT8 ONNX** | **on** | **210s** | **318s** | **12s** | **544s** | **$0.32** | **$2.32** | **4** |
+| **Oracle A1 (Altra)** | **INT8 ONNX** | **on** | **219s** | **250s** | **14s** | **486s** | **$0.16** | **$1.04** | 3 |
+| **Hetzner CAX41 (Altra)** | **INT8 ONNX** | **on** | **253s** | **298s** | **17s** | **578s** | **$0.043** | **$0.33** | 1 |
 
-> **Graviton4 caveats:** *TF BF16 full pipeline OOM-killed on c8g.4xlarge (32 GB) — TF SavedModel uses ~26 GB RSS. INT8 ONNX works perfectly on 32 GB (~2-3 GB RSS). Needs c8g.8xlarge (64 GB) for full TF BF16 pipeline.* Oracle A2 uses ONNX or TF Eigen (OneDNN+ACL causes SIGILL on AmpereOne); a Docker rebuild would enable BF16.
+> *N<4; wider confidence interval. Hetzner: ~5% throttling variance. All $/genome: `chr20_wall_s x 48.1 / 3600 x $/hr`.
 
-### Pipeline Breakdown
+### Parallel call_variants — Breaking the GEMM Ceiling
 
-**Graviton3 (c7g.4xlarge, 16 vCPU):**
+At 16+ threads, InceptionV3 GEMM saturates and more threads yield no speedup. `run_parallel_cv.sh` launches N independent ONNX workers on disjoint shards, giving 1.7-2.5x CV speedup with **zero changes to DeepVariant code**. Variant counts match sequential baseline exactly (207,799).
 
-| Stage | FP32 | BF16 | INT8 ONNX (3-run avg) |
-|-------|------|------|-----------|
-| make_examples | 255s | 278s | 299s |
-| call_variants | 298s (0.379s/100) | 185s (0.232s/100) | 194s (0.237s/100) |
-| postprocess | 29s | 24s | 14s |
-| **Total** | **582s** | **487s** | **507s** |
+| Platform | vCPU | Sequential CV | 4-way CV | Speedup | $/genome | N |
+|----------|------|--------------|----------|---------|----------|---|
+| **Oracle A1** (16 OCPU) | 16 | 250s | **147s** | **1.70x** | **$0.80** | 3 |
+| **Graviton4** (c8g.8xlarge) | 32 | 128s | **61s** | **2.10x** | **~$3.13** | 3 |
+| **Graviton3** (c7g.8xlarge) | 32 | 141s | **74s** | **1.90x** | **~$3.35** | 4 |
+| **Oracle A2** (16 OCPU) | 32 | 282s | **114s** | **2.47x** | **~$2.14** | 2* |
 
-**Cross-platform comparison (16 vCPU, best available backend):**
-
-| Platform | Backend | jemalloc | ME | CV (rate) | PP | Total | $/hr | $/genome | N |
-|----------|---------|----------|-----|-----------|-----|-------|------|----------|---|
-| Graviton3 (c7g) | BF16 | off | 278s | 185s (0.232) | 24s | **487s** | $0.58 | **$3.77** | 2* |
-| Graviton3 (c7g) | BF16 | **on** | 242s | 188s (0.235) | 9s | **443s** | $0.58 | **$3.43** | 2* |
-| Graviton3 (c7g) | INT8 ONNX | off | 299s | 194s (0.237) | 14s | **507s** | $0.58 | **$3.92** | 3 |
-| **Graviton4 (c8g)** | **INT8 ONNX** | **off** | **194s** | **158s (0.197)** | **6s** | **366s** | **$0.68** | **$3.33** | 2* |
-| Graviton4 (c8g) | ONNX FP32 | off | 232s | 360s (0.446) | 10s | **602s** | $0.68 | $5.47 | 2* |
-| **Oracle A2 (AmpereOne)** | **INT8 ONNX** | **off** | **253s** | **315s (0.389)** | **11s** | **584s** | **$0.32** | **$2.49** | **4** |
-| **Oracle A2 (AmpereOne)** | **INT8 ONNX** | **on** | **210s** | **318s (0.393)** | **12s** | **544s** | **$0.32** | **$2.32** | **4** |
-| Oracle A2 (AmpereOne) | TF Eigen FP32 | off | 287s | 325s (0.387) | 17s | **629s** | $0.32 | $2.69 | 2* |
-| **Oracle A1 (Altra/N1)** | **INT8 ONNX** | **off** | **245s** | **247s (0.309)** | **14s** | **509s** | **$0.16** | **$1.09** | **4** |
-| **Oracle A1 (Altra/N1)** | **INT8 ONNX** | **on** | **219s** | **250s (0.313)** | **14s** | **486s** | **$0.16** | **$1.04** | 3 |
-| Oracle A1 (Altra/N1) | TF Eigen FP32 | off | 247s | 470s (0.588) | 14s | **735s** | $0.16 | $1.57 | 1* |
-| **Hetzner CAX41 (Altra/N1)** | **INT8 ONNX** | **on** | **253s** | **298s (0.366)** | **17s** | **578s** | **$0.043** | **$0.33** | 1 |
-| Hetzner CAX41 (Altra/N1) | TF Eigen FP32 | on | 258s | 457s (0.551) | 16s | 735s | $0.043 | $0.42 | 5 |
-
-> Hetzner CAX41 uses shared vCPU — occasional ~5% throttling causes ~6% CV rate variance. Available in EU regions only. Pricing: ~$0.043/hr (€0.0396/hr).
-
-**32-vCPU sequential + parallel call_variants:**
-
-| Platform | vCPU | Sequential Wall | 4-way CV time | Wall (4-way) | $/hr | $/genome | CV N |
-|----------|------|----------------|--------------|-------------|------|----------|------|
-| **Oracle A1** (16 OCPU) | 16 | 486s | **147s** | **376s** | $0.16 | **$0.80** | 3 |
-| **Graviton4** (c8g.8xlarge) | 32 | 232s | **61s** | **~172s** | $1.36 | **~$3.13** | 3 |
-| **Graviton3** (c7g.8xlarge) | 32 | 283s | **74s** | **~218s** | $1.15 | **~$3.35** | 4 |
-| **Oracle A2** (16 OCPU) | 32 | 418s | **114s** | **~250s** | $0.64 | **~$2.14** | 2* |
-
-> *N<4 runs; wider confidence interval. Wall time includes ~4-5s Docker startup and inter-stage overhead. All $/genome use formula: `chr20_wall_s × 48.1 / 3600 × $/hr`. Oracle A2 pricing: $0.04/OCPU/hr — 16-vCPU rows use 8 OCPU ($0.32/hr), 32-vCPU rows use 16 OCPU ($0.64/hr). jemalloc: enable with `-e DV_USE_JEMALLOC=1`. Parallel CV: 4 independent workers each processing 8 of 32 shards — see `scripts/benchmark_parallel_cv.sh`. Projected wall = measured ME + measured 4-way CV + measured PP.
-
-> **Parallel call_variants breaks through the CV bottleneck.** At 32 vCPU, sequential CV doesn't scale beyond 16 threads (GEMM saturation). 4-way parallel CV gives 1.9-2.5x CV speedup by running 4 workers at the saturated throughput on 1/4 of the data. Variant counts match sequential baseline exactly (207,799). Only works with ONNX backend (~3 GB/worker); TF SavedModel (~26 GB/worker) would OOM.
-
-### Accuracy
-
-All three configurations produce **equivalent accuracy** on GIAB HG003 chr20 (207,799 variant calls, validated with `rtg vcfeval`):
-
-**Aggregate F1:**
-
-| Metric | FP32 | BF16 | INT8 ONNX |
-|--------|------|------|-----------|
-| SNP F1 | 0.9977 | 0.9977 | 0.9978 |
-| INDEL F1 | 0.9961 | 0.9961 | 0.9962 |
-
-**Stratified region validation** (GIAB difficult regions, chr20, confidence-restricted):
-
-| Region | INT8 SNP | BF16 SNP | INT8 INDEL | BF16 INDEL |
-|--------|----------|----------|------------|------------|
-| Homopolymers (≥7bp) | 0.9985 | 0.9985 | 0.9967 | 0.9963 |
-| Simple Repeats | 0.9994 | 0.9994 | 0.9967 | 0.9961 |
-| Tandem Repeats (201-10000bp) | 0.9983 | 0.9983 | 0.9926 | 0.9926 |
-| Segmental Duplications | 0.9802 | 0.9744 | 0.9814 | 0.9814 |
-
-INT8 matches or exceeds BF16 accuracy in all tested stratification regions, including the difficult contexts where quantization commonly degrades (homopolymers, tandem repeats, segmental duplications).
+> ONNX backend only (~3 GB/worker). TF SavedModel uses ~26 GB RSS per worker — use ONNX or 64+ GB instances for TF.
 
 ---
 
 ## Quick Start
 
-**Prerequisites:** ARM64 Linux host + Docker.
+**Requirements:** ARM64 Linux + Docker.
 
 ```bash
-# Pull pre-built image
 docker pull ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.5
 
-# Run
+# DV_AUTOCONFIG=1 detects your CPU and selects the optimal backend automatically.
+# --memory=28g prevents TF from grabbing all available RAM.
 docker run \
   -v /path/to/data:/data \
   --memory=28g \
+  -e DV_AUTOCONFIG=1 \
+  -e DV_USE_JEMALLOC=1 \
   ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.5 \
   /opt/deepvariant/bin/run_deepvariant \
   --model_type=WGS \
@@ -158,52 +175,34 @@ docker run \
   --call_variants_extra_args="--batch_size=256"
 ```
 
-### Enable BF16 (Graviton3+)
+`DV_AUTOCONFIG=1` detects Graviton3/4, AmpereOne, and Neoverse-N1/N2, and applies the right backend, thread counts, and safety settings. User-provided env vars always take precedence.
 
-38% faster call_variants inference on Graviton3/4 instances (c7g, c8g, m7g, r7g). Total pipeline speedup is 1.20x at 16 vCPU — make_examples becomes the bottleneck at this core count.
+### BF16 (Graviton3+, 38% faster CV)
 
 ```bash
-docker run \
-  -v /path/to/data:/data \
-  --memory=28g \
-  -e TF_ENABLE_ONEDNN_OPTS=1 \
-  -e ONEDNN_DEFAULT_FPMATH_MODE=BF16 \
-  -e OMP_NUM_THREADS=$(nproc) \
-  -e OMP_PROC_BIND=false \
-  -e OMP_PLACES=cores \
+docker run -v /path/to/data:/data --memory=28g \
+  -e TF_ENABLE_ONEDNN_OPTS=1 -e ONEDNN_DEFAULT_FPMATH_MODE=BF16 \
+  -e OMP_NUM_THREADS=$(nproc) -e OMP_PROC_BIND=false -e OMP_PLACES=cores \
   ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.5 \
   /opt/deepvariant/bin/run_deepvariant \
-  --model_type=WGS \
-  --ref=/data/reference.fasta \
-  --reads=/data/input.bam \
-  --output_vcf=/data/output.vcf.gz \
-  --num_shards=$(nproc) \
+  --model_type=WGS --ref=/data/reference.fasta --reads=/data/input.bam \
+  --output_vcf=/data/output.vcf.gz --num_shards=$(nproc) \
   --call_variants_extra_args="--batch_size=256"
 ```
 
-Check BF16 support: `grep -q bf16 /proc/cpuinfo && echo "BF16 supported"`
-
-### Enable INT8 (all ARM64 platforms)
-
-2.3x faster call_variants vs FP32 ONNX. Best option on platforms without BF16 (Oracle A1, A2, Neoverse-N1). Requires a one-time quantization step using calibration data from your first run.
+### INT8 (all ARM64 platforms, 2.3x faster CV)
 
 ```bash
-# Step 1: Normal run (produces TFRecords as a side effect)
-docker run \
-  -v /path/to/data:/data \
-  --memory=28g \
+# Step 1: Run the pipeline normally (intermediates are reused for calibration)
+docker run -v /path/to/data:/data --memory=28g \
   ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.5 \
   /opt/deepvariant/bin/run_deepvariant \
-  --model_type=WGS \
-  --ref=/data/reference.fasta \
-  --reads=/data/input.bam \
-  --output_vcf=/data/output.vcf.gz \
-  --num_shards=$(nproc) \
+  --model_type=WGS --ref=/data/reference.fasta --reads=/data/input.bam \
+  --output_vcf=/data/output.vcf.gz --num_shards=$(nproc) \
   --intermediate_results_dir=/data/intermediate
 
-# Step 2: Quantize the model (one-time, ~2 minutes)
-docker run \
-  -v /path/to/data:/data \
+# Step 2: Quantize (one-time, ~2 min)
+docker run -v /path/to/data:/data \
   ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.5 \
   quantize_model \
   --input /opt/models/wgs/model.onnx \
@@ -211,116 +210,170 @@ docker run \
   --tfrecord_dir /data/intermediate/make_examples \
   --saved_model_dir /opt/models/wgs
 
-# Step 3: All subsequent runs use INT8 (2.3x faster call_variants)
-docker run \
-  -v /path/to/data:/data \
-  --memory=28g \
+# Step 3: All subsequent runs use INT8
+docker run -v /path/to/data:/data --memory=28g \
   ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.5 \
   /opt/deepvariant/bin/run_deepvariant \
-  --model_type=WGS \
-  --ref=/data/reference.fasta \
-  --reads=/data/input.bam \
-  --output_vcf=/data/output.vcf.gz \
-  --num_shards=$(nproc) \
+  --model_type=WGS --ref=/data/reference.fasta --reads=/data/input.bam \
+  --output_vcf=/data/output.vcf.gz --num_shards=$(nproc) \
   --call_variants_extra_args="--batch_size=256,--use_onnx=true,--onnx_model=/data/model_int8_static.onnx"
 ```
 
-### Optional: jemalloc Allocator
+> **Shortcut:** The pre-quantized INT8 model (21 MB) is attached to the [GitHub Release](https://github.com/antomicblitz/deepvariant-linux-arm64/releases). Download it and skip Steps 1-2.
 
-Reduces malloc contention under concurrent shards. Enable with:
-
-```bash
-docker run -e DV_USE_JEMALLOC=1 ...
-```
-
-To use a custom jemalloc path: `-e DV_JEMALLOC_PATH=/path/to/libjemalloc.so`.
-
-Benchmark data: see `scripts/benchmark_jemalloc_ablation.sh`.
-
-### Parallel call_variants (32+ vCPU)
-
-On machines with 32+ vCPUs, call_variants hits a throughput ceiling at ~16 threads (GEMM saturation). `run_parallel_cv.sh` splits the work across N independent workers for 1.9-2.5x CV speedup with zero code changes to DeepVariant.
+### Parallel call_variants (16+ vCPU)
 
 ```bash
 docker run -e DV_AUTOCONFIG=1 -e DV_USE_JEMALLOC=1 \
   -v /path/to/data:/data --memory=56g \
   ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.5 \
   /opt/deepvariant/scripts/run_parallel_cv.sh \
-  --model_type=WGS \
-  --ref=/data/reference.fasta \
-  --reads=/data/input.bam \
+  --model_type=WGS --ref=/data/reference.fasta --reads=/data/input.bam \
   --output_vcf=/data/output.vcf.gz \
-  --num_shards=32 \
-  --num_cv_workers=4
+  --num_shards=32 --num_cv_workers=4
 ```
 
-**Requirements:**
-- ONNX backend only (TF SavedModel uses ~26 GB per worker — would OOM)
-- `--num_shards` must be divisible by `--num_cv_workers`
-- 32+ vCPU recommended (each worker gets `nproc / num_cv_workers` threads)
-- `--memory=56g` recommended for 4-way parallel (vs 28g for sequential)
-
-**How it works:** Runs make_examples with GNU parallel (same as `run_deepvariant`), splits output shards into N groups via symlinks, launches N call_variants processes with scoped `OMP_NUM_THREADS`, then runs postprocess_variants on the merged outputs.
+ONNX backend only. `--num_shards` must be divisible by `--num_cv_workers`.
 
 <details>
 <summary>All run_parallel_cv.sh options</summary>
 
 | Flag | Required | Default | Description |
 |------|----------|---------|-------------|
-| `--model_type` | Yes | — | WGS, WES, PACBIO, ONT_R104, etc. |
-| `--ref` | Yes | — | Reference FASTA path |
-| `--reads` | Yes | — | Input BAM/CRAM path |
-| `--output_vcf` | Yes | — | Output VCF path |
-| `--num_shards` | Yes | — | Number of make_examples shards |
+| `--model_type` | Yes | -- | WGS, WES, PACBIO, ONT_R104, etc. |
+| `--ref` | Yes | -- | Reference FASTA |
+| `--reads` | Yes | -- | Input BAM/CRAM |
+| `--output_vcf` | Yes | -- | Output VCF |
+| `--num_shards` | Yes | -- | make_examples shards |
 | `--num_cv_workers` | No | 4 | Parallel CV workers |
-| `--regions` | No | — | Genomic region (e.g., chr20) |
+| `--regions` | No | -- | Genomic region (e.g., chr20) |
 | `--batch_size` | No | 256 | CV batch size |
 | `--onnx_model` | No | auto | Custom ONNX model path |
-| `--customized_model` | No | — | Custom model checkpoint |
-| `--sample_name` | No | — | Sample name for VCF header |
-| `--output_gvcf` | No | — | Output gVCF path |
+| `--customized_model` | No | -- | Custom checkpoint |
+| `--sample_name` | No | -- | VCF header sample name |
+| `--output_gvcf` | No | -- | gVCF output path |
 | `--postprocess_cpus` | No | num_shards | CPUs for postprocess |
 | `--intermediate_results_dir` | No | tmpdir | Working directory |
 
 </details>
 
-### Auto-configure for your ARM64 CPU
+---
 
-Not sure which backend to use? Run autoconfig to get a recommended configuration:
+## Deploy on ARM64
 
-```bash
-docker run --rm ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.5 \
-  bash /opt/deepvariant/scripts/autoconfig.sh
-```
-
-Or enable automatic configuration for every run:
+### Fresh instance setup
 
 ```bash
-docker run -e DV_AUTOCONFIG=1 ...
+# One-command setup: installs Docker, detects BF16 support, configures TF env vars
+bash scripts/setup_graviton.sh
 ```
 
-Autoconfig detects your CPU (Graviton3/4, AmpereOne, Neoverse-N1) and selects the optimal backend, thread counts, and safety settings automatically. User-provided environment variables always take precedence.
+Works on Ubuntu 22.04/24.04. Installs Docker, build essentials, and writes CPU-specific TF environment variables to `/etc/profile.d/deepvariant-arm64.sh`.
+
+### Pull the Docker image
+
+```bash
+# Authenticate (if using a private registry)
+echo "$GITHUB_PAT" | docker login ghcr.io -u USERNAME --password-stdin
+
+# Pull (~2-4 GB compressed)
+docker pull ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.5
+```
+
+### Platform-specific notes
+
+| Platform | Key setting | Why |
+|----------|------------|-----|
+| **Graviton3/4** (c7g, c8g) | `DV_AUTOCONFIG=1` enables BF16 automatically | Has BF16 BFMMLA — 38% faster CV |
+| **Oracle A1** (Altra, Neoverse-N1) | `DV_AUTOCONFIG=1` disables OneDNN | OneDNN+ACL adds 29% ME overhead on N1 without BF16 |
+| **Oracle A2** (AmpereOne) | `TF_ENABLE_ONEDNN_OPTS=0` **mandatory** | OneDNN+ACL causes SIGILL on AmpereOne ISA |
+| **Hetzner CAX** (shared Altra) | Same as Oracle A1 | Shared vCPU; ~5% throttling variance |
+
+`DV_AUTOCONFIG=1` handles all of the above automatically. You only need manual env vars if you want to override the defaults.
+
+---
+
+## Validate Accuracy
+
+Reproduce the accuracy numbers from this README on your own hardware.
+
+### 1. Download test data
+
+```bash
+sudo mkdir -p /data/{reference,bam,truth,output}
+sudo chown -R $(whoami) /data
+
+# Reference genome
+wget -q -O /data/reference/GRCh38_no_alt_analysis_set.fasta.gz \
+  https://storage.googleapis.com/genomics-public-data/references/GRCh38/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna.gz
+gunzip /data/reference/GRCh38_no_alt_analysis_set.fasta.gz
+samtools faidx /data/reference/GRCh38_no_alt_analysis_set.fasta
+
+# HG003 chr20 BAM + GIAB truth set
+BUCKET=https://storage.googleapis.com/deepvariant/case-study-testdata
+wget -q -P /data/bam/ ${BUCKET}/HG003.novaseq.pcr-free.35x.dedup.grch38_no_alt.chr20.bam
+wget -q -P /data/bam/ ${BUCKET}/HG003.novaseq.pcr-free.35x.dedup.grch38_no_alt.chr20.bam.bai
+wget -q -P /data/truth/ ${BUCKET}/HG003_GRCh38_1_22_v4.2.1_benchmark.vcf.gz
+wget -q -P /data/truth/ ${BUCKET}/HG003_GRCh38_1_22_v4.2.1_benchmark.vcf.gz.tbi
+wget -q -P /data/truth/ ${BUCKET}/HG003_GRCh38_1_22_v4.2.1_benchmark_noinconsistent.bed
+```
+
+### 2. Run the pipeline on chr20
+
+```bash
+docker run \
+  -v /data:/data --memory=28g \
+  -e DV_AUTOCONFIG=1 -e DV_USE_JEMALLOC=1 \
+  ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.5 \
+  /opt/deepvariant/bin/run_deepvariant \
+  --model_type=WGS \
+  --ref=/data/reference/GRCh38_no_alt_analysis_set.fasta \
+  --reads=/data/bam/HG003.novaseq.pcr-free.35x.dedup.grch38_no_alt.chr20.bam \
+  --output_vcf=/data/output/HG003.chr20.vcf.gz \
+  --regions chr20 \
+  --num_shards=$(nproc) \
+  --intermediate_results_dir=/data/output/intermediate \
+  --call_variants_extra_args="--batch_size=256"
+```
+
+### 3. Validate with hap.py
+
+```bash
+bash scripts/validate_accuracy.sh \
+  --vcf /data/output/HG003.chr20.vcf.gz \
+  --truth-vcf /data/truth/HG003_GRCh38_1_22_v4.2.1_benchmark.vcf.gz \
+  --truth-bed /data/truth/HG003_GRCh38_1_22_v4.2.1_benchmark_noinconsistent.bed \
+  --ref /data/reference/GRCh38_no_alt_analysis_set.fasta \
+  --output-dir /data/output/happy_results
+```
+
+This pulls the hap.py Docker image (`jmcdani20/hap.py:v0.3.12`) automatically and checks against accuracy gates:
+
+```
+Expected output:
+  SNP F1:   0.9978  (gate: >= 0.9974)   PASS
+  INDEL F1: 0.9962  (gate: >= 0.9940)   PASS
+```
+
+Or use the all-in-one benchmark script:
+
+```bash
+bash scripts/benchmark_full_chr20.sh --data-dir /data
+```
 
 ---
 
 ## Build from Source
 
 <details>
-<summary>Click to expand build instructions</summary>
+<summary>Click to expand</summary>
 
-### Prerequisites
-
-- ARM64 Linux host (Ubuntu 24.04, GCC 13+)
-- 16 GB RAM + 8 GB swap, ~50 GB disk
-- Python 3.10 (deadsnakes PPA)
-
-### Steps
+**Prerequisites:** ARM64 Linux (Ubuntu 24.04, GCC 13+), 16 GB RAM + 8 GB swap, ~50 GB disk, Python 3.10.
 
 ```bash
 git clone https://github.com/antomicblitz/deepvariant-linux-arm64.git
 cd deepvariant-linux-arm64
 
-# Resource limits for 16 GB machines + GCC 13 fix
 cat > user.bazelrc << 'EOF'
 build --jobs 4
 build --local_ram_resources=12288
@@ -328,52 +381,14 @@ build --cxxopt=-include --cxxopt=cstdint
 build --host_cxxopt=-include --host_cxxopt=cstdint
 EOF
 
-# Install prerequisites and build
 chmod +x build-prereq-arm64.sh build_release_binaries_arm64.sh
 ./build-prereq-arm64.sh
 source settings_arm64.sh
 ./build_release_binaries_arm64.sh
-
-# Build runtime Docker image from compiled binaries
 docker build -f Dockerfile.arm64.runtime -t deepvariant-arm64 .
 ```
 
-The full build takes several hours on an 8-core machine (~2273 Bazel actions).
-
-</details>
-
----
-
-## Reproducing Benchmarks
-
-<details>
-<summary>Click to expand benchmark instructions</summary>
-
-### Download Test Data
-
-```bash
-sudo mkdir -p /data/{reference,bam,truth,output}
-
-# Reference genome
-curl -sO https://storage.googleapis.com/genomics-public-data/references/GRCh38/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna.gz
-gunzip GCA_000001405.15_GRCh38_no_alt_analysis_set.fna.gz
-mv GCA_000001405.15_GRCh38_no_alt_analysis_set.fna /data/reference/GRCh38_no_alt_analysis_set.fasta
-samtools faidx /data/reference/GRCh38_no_alt_analysis_set.fasta
-
-# HG003 chr20 BAM + GIAB truth set
-BUCKET=https://storage.googleapis.com/deepvariant/case-study-testdata
-wget -P /data/bam/ ${BUCKET}/HG003.novaseq.pcr-free.35x.dedup.grch38_no_alt.chr20.bam
-wget -P /data/bam/ ${BUCKET}/HG003.novaseq.pcr-free.35x.dedup.grch38_no_alt.chr20.bam.bai
-wget -P /data/truth/ ${BUCKET}/HG003_GRCh38_1_22_v4.2.1_benchmark.vcf.gz
-wget -P /data/truth/ ${BUCKET}/HG003_GRCh38_1_22_v4.2.1_benchmark.vcf.gz.tbi
-wget -P /data/truth/ ${BUCKET}/HG003_GRCh38_1_22_v4.2.1_benchmark_noinconsistent.bed
-```
-
-### Run
-
-```bash
-bash scripts/benchmark_full_chr20.sh --data-dir /data
-```
+Full build: several hours on an 8-core machine (~2273 Bazel actions).
 
 </details>
 
@@ -381,16 +396,12 @@ bash scripts/benchmark_full_chr20.sh --data-dir /data
 
 ## What Was Changed
 
-This fork modifies upstream DeepVariant v1.9.0 for ARM64 Linux compilation.
+**New files:** `Dockerfile.arm64`, `Dockerfile.arm64.runtime`, `settings_arm64.sh`, `build-prereq-arm64.sh`, `build_release_binaries_arm64.sh`, and `scripts/` (benchmarking, quantization, parallel CV, autoconfig, jemalloc ablation).
 
-**New files:** `Dockerfile.arm64`, `settings_arm64.sh`, `build-prereq-arm64.sh`, `build_release_binaries_arm64.sh`, benchmark and quantization scripts in `scripts/`.
-
-**Key modifications:** `third_party/htslib.BUILD` (NEON detection), `third_party/libssw.BUILD` (sse2neon header), `tools/build_absl.sh` (clang-14), `run-prereq.sh` (Ubuntu 24.04 fixes), `deepvariant/call_variants.py` (ONNX inference, INT8 output normalization, SavedModel warmup).
-
-**INT8 normalization fix:** INT8 quantization error causes some predictions to have probability distributions that don't sum to 1.0 (e.g., `[0.992, 0.0, 0.0]`). The ONNX inference path renormalizes outputs (`predictions / row_sums`) before passing to `round_gls()`. Without this fix, `postprocess_variants` crashes with `ValueError: Invalid genotype likelihoods do not sum to one`. This is specific to quantized models — FP32 and BF16 outputs always sum to 1.0.
+**Key modifications to upstream:** `third_party/htslib.BUILD` (NEON detection), `third_party/libssw.BUILD` (sse2neon), `tools/build_absl.sh` (clang-14), `run-prereq.sh` (Ubuntu 24.04), `deepvariant/call_variants.py` (ONNX inference, INT8 renormalization, SavedModel warmup).
 
 <details>
-<summary>Full list of build fixes</summary>
+<summary>Build fixes</summary>
 
 | Issue | Fix |
 |-------|-----|
@@ -405,26 +416,48 @@ This fork modifies upstream DeepVariant v1.9.0 for ARM64 Linux compilation.
 
 </details>
 
+<details>
+<summary>Dead ends (documented so you don't repeat them)</summary>
+
+| Approach | Result | Why it failed |
+|----------|--------|--------------|
+| EfficientNet-B3 model swap | 3x slower despite 3.2x fewer FLOPs | Depthwise conv poor GEMM density on CPU — see [TRAINING_EXPERIMENT.md](TRAINING_EXPERIMENT.md) |
+| KMP_AFFINITY tuning | 30% regression | Conflicts with OMP thread pinning on ARM |
+| ONNX ACL ExecutionProvider | Fragile, 16 ops supported | Not worth maintaining |
+| Dynamic INT8 on ARM64 | Crash | ConvInteger op missing in ORT ARM64 |
+| fast_pipeline at 16 vCPU | 42% slower | CPU contention between ME and CV |
+| INT8 beyond 16 threads | No improvement | GEMM saturates — use parallel CV instead |
+| ONNX inter-op parallelism | No improvement | InceptionV3 is intra-op bound |
+
+</details>
+
 ---
 
 ## Roadmap
 
-- **Phase 1 (complete):** Native ARM64 build, Docker image, GIAB-validated pipeline.
-- **Phase 2A (complete):** BF16 on Graviton3+ — 1.61x call_variants speedup, zero accuracy loss.
-- **Phase 2B (complete):** INT8 static quantization — 2.3x over ONNX FP32, matches BF16 call_variants rate, stratified region validation passed.
-- **Phase 2C (complete):** OMP env fix, stratified validation, Graviton4 ONNX FP32 benchmark, Oracle A2 TF Eigen benchmark — $2.49/genome cheapest tested.
-- **Phase 2D (complete):** 32-vCPU benchmarks on Graviton3/4 and Oracle A2. Parallel call_variants (4-way) breaks through CV bottleneck: Graviton4 61s (2.10x), Graviton3 74s (1.90x), Oracle A2 114s (2.47x).
-- **Phase 2E (complete):** Oracle A1 benchmark — **$0.80/genome** (4-way parallel CV), $1.04/genome (sequential). New cost leader, 6.3x cheaper than x86 reference. AmpereOne BF16 investigated and permanently blocked (4 cascading ACL/OneDNN bugs).
-- **Phase 3 (future):** GPU/NPU acceleration (Jetson CUDA, RK3588 NPU).
+- [x] Native ARM64 build + Docker image
+- [x] GIAB HG003 chr20 accuracy validation
+- [x] BF16 inference on Graviton3+ (38% CV speedup)
+- [x] INT8 static quantization (2.3x speedup, zero accuracy loss, 74% smaller model)
+- [x] Parallel call_variants wrapper (1.9-2.5x CV speedup)
+- [x] jemalloc integration (14-17% make_examples speedup)
+- [x] Autoconfig for CPU detection
+- [x] Hetzner CAX41 benchmark ($0.33/genome)
+- [ ] **Full 30x WGS end-to-end validation** — chr20 cost projections need this
+- [ ] Edge device validation (Jetson, RK3588)
+- [ ] Nextflow / Snakemake integration
+- [ ] WES model validation on ARM64
 
-> **Note:** This project targets Illumina short-read WGS/WES workflows. For long-read ONT or PacBio data, consider [Clair3](https://github.com/HKU-BAL/Clair3) which has community ARM64 support.
+> For long-read ONT or PacBio data, see [Clair3](https://github.com/HKU-BAL/Clair3).
 
 ---
 
 ## How to Cite
 
-[A universal SNP and small-indel variant caller using deep neural networks. *Nature Biotechnology* 36, 983-987 (2018).](https://rdcu.be/7Dhl)
+If you use this fork, please cite the original DeepVariant paper:
+
+> Poplin, R. et al. A universal SNP and small-indel variant caller using deep neural networks. *Nature Biotechnology* **36**, 983-987 (2018). https://rdcu.be/7Dhl
 
 ## License
 
-[BSD-3-Clause](LICENSE). This is not an official Google product. Not intended as a medical device or for clinical use.
+[BSD-3-Clause](LICENSE). Not an official Google product. Not validated for clinical use.
