@@ -85,35 +85,38 @@ Oracle A2 pricing: $0.04/OCPU/hr — 16-vCPU rows use 8 OCPU ($0.32/hr),
 
 > **Key insight at 32 vCPU:** BF16 and INT8 converge (~232-233s on Graviton4) because both hit the CV floor. CV rate doesn't improve beyond 16 ORT threads. ME scales well (2x shards → 1.8x speedup) but CV is the bottleneck. Solution: parallel call_variants.
 
-### Parallel call_variants (32 vCPU, 4-way)
+### Parallel call_variants (4-way)
 
-Splits 32 ME shards across 4 independent call_variants workers (8 shards each, `OMP_NUM_THREADS=$(nproc)/4`). Zero code changes — wrapper script with symlink shard renumbering.
+Splits ME shards across 4 independent call_variants workers (`OMP_NUM_THREADS=$(nproc)/4`). Zero code changes — wrapper script with symlink shard renumbering.
 
 | Platform | Sequential CV | 4-way CV | Speedup | N (4-way) |
 |----------|--------------|----------|---------|-----------|
+| **Oracle A1** (16 OCPU, 16 vCPU) | 250s | **147s** | **1.70x** | 3 |
 | **Graviton4** (c8g.8xlarge) | 128s | **61s** | **2.10x** | 3 |
 | **Graviton3** (c7g.8xlarge) | 141s | **74s** | **1.90x** | 4 |
-| **Oracle A2** (16 OCPU) | 283s | **114s** | **2.47x** | 2* |
+| **Oracle A2** (16 OCPU, 32 vCPU) | 283s | **114s** | **2.47x** | 2* |
 
 All variant counts match sequential baseline exactly (207,799).
 
-**Measured full pipeline with `run_parallel_cv.sh`** (single-run smoke test, no jemalloc):
+**Measured full pipeline with `run_parallel_cv.sh`:**
 
-| Platform | ME | CV (4-way) | PP | Wall | $/hr | $/genome |
-|----------|-----|-----------|-----|------|------|----------|
-| **Graviton4** (c8g.8xlarge) | 76s | 151s | 5s | **232s** | $1.36 | **$4.22** |
-| **Oracle A2** (16 OCPU) | 131s | 233s | 9s | **373s** | $0.64 | **$3.19** |
+| Platform | ME | CV (4-way) | PP | Wall | $/hr | $/genome | N |
+|----------|-----|-----------|-----|------|------|----------|---|
+| **Oracle A1** (16 OCPU) | 216s | 147s | 13s | **376s** | $0.16 | **$0.80** | 3 |
+| **Graviton4** (c8g.8xlarge) | 76s | 151s | 5s | **232s** | $1.36 | **$4.22** | 1* |
+| **Oracle A2** (16 OCPU) | 131s | 233s | 9s | **373s** | $0.64 | **$3.19** | 1* |
 
 > CV times in the full pipeline are higher than isolated benchmarks due to per-worker
 > ONNX session startup overhead (~20-30s). With jemalloc, ME times improve 14-17%.
 
 **Projected full pipeline with 4-way parallel CV** (from isolated CV benchmarks + sequential ME/PP):
 
-| Platform | ME | CV (4-way) | PP | Wall (proj) | $/hr | $/genome |
-|----------|-----|-----------|-----|-------------|------|----------|
-| **Oracle A2** | 113s | 114s | 10s | **~250s** | $0.64 | **~$2.14** |
-| **Graviton4** | 100s | 61s | 6s | **~172s** | $1.36 | **~$3.13** |
-| **Graviton3** | 131s | 74s | 8s | **~218s** | $1.15 | **~$3.35** |
+| Platform | ME | CV (4-way) | PP | Wall | $/hr | $/genome | Source |
+|----------|-----|-----------|-----|------|------|----------|--------|
+| **Oracle A1** | 216s | 147s | 13s | **376s** | $0.16 | **$0.80** | Measured (N=3) |
+| **Oracle A2** | 113s | 114s | 10s | **~250s** | $0.64 | **~$2.14** | Projected |
+| **Graviton4** | 100s | 61s | 6s | **~172s** | $1.36 | **~$3.13** | Projected |
+| **Graviton3** | 131s | 74s | 8s | **~218s** | $1.15 | **~$3.35** | Projected |
 
 \*N<4 runs; wider confidence interval.
 
@@ -200,7 +203,8 @@ because ONNX Runtime and TF have their own internal allocators.
 
 | Use Case | Platform | vCPU | Backend | Parallel CV | $/genome | Notes |
 |----------|----------|------|---------|-------------|----------|-------|
-| **Cheapest** | Oracle A1 (16 OCPU) | 16 | INT8 ONNX+jemalloc | no | **$1.04** | 3-run, sigma=14s |
+| **Cheapest** | Oracle A1 (16 OCPU) | 16 | INT8 ONNX+jemalloc | **4-way** | **$0.80** | 3-run, sigma=4.5s |
+| Cheapest (sequential) | Oracle A1 (16 OCPU) | 16 | INT8 ONNX+jemalloc | no | **$1.04** | 3-run, sigma=14s |
 | Cheapest (A2) | Oracle A2 (16 OCPU) | 32 | INT8 ONNX | 4-way | **~$2.14** | Projected from measured CV |
 | **Best speed/cost** | Graviton4 (c8g.8xlarge) | 32 | BF16+jemalloc | 4-way | **~$3.13** | Projected; fastest wall ~172s |
 | **Fastest ARM64** | Graviton4 (c8g.8xlarge) | 32 | BF16+jemalloc | 4-way | **~$3.13** | CV=61s (N=3, σ=0) |
@@ -210,10 +214,11 @@ because ONNX Runtime and TF have their own internal allocators.
 
 ### Platform Notes
 
-- **Oracle A1 (Altra/N1):** The cheapest option at **$1.04/genome**. No BF16 or i8mm —
-  use INT8 ONNX with jemalloc. OneDNN+ACL should work (N1 is the target ISA) but
-  was not tested. Higher run-to-run variance than other platforms (sigma=14s vs <1s
-  on Graviton3); use N >= 6 runs for tight benchmarks. See `docs/oracle-a1-benchmark.md`.
+- **Oracle A1 (Altra/N1):** The cheapest option at **$0.80/genome** (4-way parallel CV)
+  or $1.04/genome (sequential). No BF16 or i8mm — use INT8 ONNX with jemalloc.
+  4-way parallel CV gives 1.70x CV speedup (250s→147s). Higher run-to-run variance
+  than other platforms (sigma=14s sequential, sigma=4.5s parallel); use N >= 6 runs
+  for tight sequential benchmarks. See `docs/oracle-a1-benchmark.md`.
 - **Graviton3/4:** Use BF16 when BF16 CPU flag is present (`grep bf16 /proc/cpuinfo`).
   INT8 ONNX is the fallback for non-BF16 platforms. Both achieve similar CV rates
   on Graviton3 (0.232 vs 0.237 s/100).
@@ -245,13 +250,13 @@ because ONNX Runtime and TF have their own internal allocators.
 
 ## Untested / Pending
 
-| Item | Blocking On | Expected Impact |
-|------|-------------|-----------------|
-| Full pipeline with 4-way parallel CV | Integration script | Projected: Oracle A2 ~$2.14, Graviton4 ~$3.13 |
-| AmpereOne BF16 via generic TF wheel | SVE hypothesis test | Could reach ~$1.55/genome if BF16 unlocked |
-| AmpereOne Docker rebuild (OneDNN for Siryn) | Build infrastructure | Full BF16 fast math, target <$2/genome |
-| ~~Oracle A1 (Altra) benchmark~~ | **DONE** | **$1.04/genome — new cost leader** |
-| 8-way parallel CV | Diminishing returns test | Memory bandwidth may saturate at 8 workers |
+| Item | Status | Notes |
+|------|--------|-------|
+| ~~Full pipeline with 4-way parallel CV~~ | **DONE** | Oracle A1: **$0.80/genome** (measured, N=3). Graviton4 ~$3.13, Oracle A2 ~$2.14 (projected). |
+| ~~Oracle A1 (Altra) benchmark~~ | **DONE** | **$0.80/genome (parallel), $1.04/genome (sequential) — cost leader** |
+| ~~AmpereOne BF16 via generic TF wheel~~ | **BLOCKED** | SVE `cntb` probe causes SIGILL. ACL v23.08 SVE filter patch applied — 4 cascading bugs found. Permanently blocked. |
+| ~~AmpereOne Docker rebuild (OneDNN for Siryn)~~ | **BLOCKED** | Conv2D falls to `gemm:ref`, Grappler remapping crashes. See `docs/onednn-ampereone.md`. |
+| 8-way parallel CV | Pending | Diminishing returns — memory bandwidth may saturate at 8 workers |
 
 See `docs/oracle-a2-wheel-test.md` for the AmpereOne SIGILL investigation
 procedure, `scripts/benchmark_parallel_cv.sh` for the parallel CV benchmark,

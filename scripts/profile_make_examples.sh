@@ -50,7 +50,7 @@ set -euo pipefail
 # ============================================================
 # Defaults
 # ============================================================
-IMAGE="ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.2"
+IMAGE="ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.5"
 DATA_DIR="/data"
 REGION="chr20"
 NUM_SHARDS=""

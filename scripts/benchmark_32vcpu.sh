@@ -9,7 +9,7 @@
 #     --platform graviton3 \
 #     --usd-per-hr 1.15 \
 #     --data-dir /data \
-#     --image ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.2
+#     --image ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.5
 #
 # What it runs (in order):
 #   1. autoconfig.sh — verify CPU detected correctly
@@ -27,7 +27,7 @@ set -euo pipefail
 
 # --- Defaults ---
 PLATFORM=""
-IMAGE="ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.2"
+IMAGE="ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.5"
 DATA_DIR="/data"
 USD_PER_HR=""
 DOCKER_MEM="56g"
@@ -44,7 +44,7 @@ Required:
 
 Optional:
   --data-dir DIR         Data directory (default: /data)
-  --image IMAGE          Docker image (default: ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.2)
+  --image IMAGE          Docker image (default: ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.5)
   --docker-mem MEM       Docker memory limit (default: 56g)
   --batch-size N         call_variants batch size (default: 256)
   --help                 Show this help

@@ -121,7 +121,9 @@ RUN \
       /opt/deepvariant/bin/$name && chmod +x /opt/deepvariant/bin/$name; \
   done && \
   printf '#!/bin/bash\n/usr/bin/python3 -u /opt/deepvariant/bin/run_deepvariant.py "$@"\n' > \
-    /opt/deepvariant/bin/run_deepvariant && chmod +x /opt/deepvariant/bin/run_deepvariant
+    /opt/deepvariant/bin/run_deepvariant && chmod +x /opt/deepvariant/bin/run_deepvariant && \
+  printf '#!/bin/bash\n/usr/bin/python3 /opt/deepvariant/scripts/quantize_static_onnx.py "$@"\n' > \
+    /opt/deepvariant/bin/quantize_model && chmod +x /opt/deepvariant/bin/quantize_model
 
 # Copy models (same as upstream — models are architecture-independent)
 WORKDIR /opt/models/wgs
@@ -223,10 +225,12 @@ RUN python3 -m tf2onnx.convert --saved-model /opt/models/wgs --output /opt/model
     python3 -m tf2onnx.convert --saved-model /opt/models/wes --output /opt/models/wes/model.onnx --opset 17 && \
     python3 -m tf2onnx.convert --saved-model /opt/models/pacbio --output /opt/models/pacbio/model.onnx --opset 17
 
-# Scripts: entrypoint, autoconfig, parallel CV wrapper
+# Scripts: entrypoint, autoconfig, parallel CV wrapper, quantization, ONNX conversion
 COPY scripts/docker_entrypoint.sh /opt/deepvariant/bin/docker_entrypoint.sh
 COPY scripts/autoconfig.sh /opt/deepvariant/scripts/autoconfig.sh
 COPY scripts/run_parallel_cv.sh /opt/deepvariant/scripts/run_parallel_cv.sh
+COPY scripts/quantize_static_onnx.py /opt/deepvariant/scripts/quantize_static_onnx.py
+COPY scripts/convert_model_onnx.py /opt/deepvariant/scripts/convert_model_onnx.py
 RUN chmod +x /opt/deepvariant/bin/docker_entrypoint.sh \
              /opt/deepvariant/scripts/autoconfig.sh \
              /opt/deepvariant/scripts/run_parallel_cv.sh
