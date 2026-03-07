@@ -49,6 +49,9 @@ ENV VERSION=${VERSION}
 
 WORKDIR /opt/deepvariant
 
+# Fix cryptography ABI mismatch in builder stage (system package compiled for 3.12)
+RUN pip3 install --ignore-installed cryptography cffi
+
 # Use ARM64-specific build scripts
 RUN chmod +x build-prereq-arm64.sh build_release_binaries_arm64.sh && \
     ./build-prereq-arm64.sh \
