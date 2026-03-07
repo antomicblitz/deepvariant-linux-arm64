@@ -88,12 +88,11 @@ fi
 
 case "${CPU_FAMILY}" in
   ampereone)
-    BACKEND="tf_fp32"
+    BACKEND="onnx_int8"
     TF_ONEDNN="0"
     NOTES+=("AmpereOne: OneDNN+ACL DISABLED (SIGILL — ACL compiled for Neoverse-N1).")
-    NOTES+=("Both make_examples and call_variants crash with TF_ENABLE_ONEDNN_OPTS=1.")
-    NOTES+=("Use INT8 ONNX for call_variants (--use_onnx). See docs/onednn-ampereone.md.")
-    NOTES+=("Rebuild TF from source on AmpereOne to unlock BF16 (~\$1.44/genome target).")
+    NOTES+=("INT8 ONNX is the optimal backend (\$2.32/genome vs \$2.49 TF Eigen FP32).")
+    NOTES+=("See docs/onednn-ampereone.md for full diagnostic trail.")
     ;;
   neoverse-v1-graviton3|neoverse-v2-graviton4)
     if [[ "${HAS_BF16}" == "true" ]]; then
