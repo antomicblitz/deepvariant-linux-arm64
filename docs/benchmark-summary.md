@@ -19,6 +19,7 @@ Version tags use the format `v{upstream}-arm64.{n}` (e.g., `v1.9.0-arm64.4`).
 | AWS Graviton4 | c8g.8xlarge | Neoverse V2 | 32 | 64 GB | $1.36 |
 | Oracle A1 | A1.Flex (16 OCPU) | Altra (Neoverse N1) | 16 | 32 GB | $0.16 |
 | Oracle A2 | A2.Flex (16 OCPU) | AmpereOne (Siryn) | 32 | 64 GB | $0.64 |
+| Hetzner | CAX41 | Ampere Altra (Neoverse N1) | 16 (shared) | 32 GB | $0.043 |
 | GCP | t2a-standard-16 | Neoverse N1 | 16 | 64 GB | — |
 
 ---
@@ -73,6 +74,8 @@ Oracle A2 pricing: $0.04/OCPU/hr — 16-vCPU rows use 8 OCPU ($0.32/hr),
 | **Oracle A1 (Altra/N1)** | **INT8 ONNX** | **on** | **219s** | **250s (0.313)** | **14s** | **486s** | **$0.16** | **$1.04** | 3 |
 | Oracle A1 (Altra/N1) | TF Eigen FP32 | off | 247s | 470s (0.588) | 14s | **735s** | $0.16 | $1.57 | 1* |
 | Oracle A1 (Altra/N1) | ONNX FP32 | off | 240s | ~568s (0.711) | 14s | **828s** | $0.16 | $1.77 | 2* |
+| **Hetzner CAX41 (N1)** | **INT8 ONNX** | **on** | **253s** | **298s (0.366)** | **17s** | **578s** | **$0.043** | **$0.33** | — |
+| Hetzner CAX41 (N1) | TF Eigen FP32 | on | 258s | 457s (0.551) | 16s | **735s** | $0.043 | $0.42 | — |
 
 ### Cross-Platform Comparison (32 vCPU, Sequential)
 
@@ -152,6 +155,8 @@ See README.md for usage instructions.
 | **Oracle A1 (Altra/N1)** | **16 OCPU** | **INT8 ONNX** | **0.309 s/100** | **~8m29s** |
 | Oracle A1 (Altra/N1) | 16 OCPU | TF Eigen FP32 | 0.588 s/100 | 12m15s |
 | Oracle A1 (Altra/N1) | 16 OCPU | ONNX FP32 | 0.711 s/100 | 13m48s |
+| **Hetzner CAX41 (N1)** | **16 (shared)** | **INT8 ONNX** | **0.366 s/100** | **9m38s** |
+| Hetzner CAX41 (N1) | 16 (shared) | TF Eigen FP32 | 0.551 s/100 | 12m15s |
 
 ---
 
@@ -190,6 +195,7 @@ Measured via `scripts/benchmark_jemalloc_ablation.sh` with interleaved runs:
 - **Graviton3 (N=2):** ME -13.8%, CV +1.6% (noise), wall -9.0% (487->443s)
 - **Oracle A2 (N=4):** ME -17.0%, CV within noise, wall -6.9% (584->544s)
 - **Oracle A1 (N=3/4):** ME -10.6%, CV within noise, wall -4.5% (509->486s)
+- **Hetzner CAX41:** jemalloc ON for both INT8 and FP32 benchmarks (baseline without jemalloc not separately measured)
 
 ME improvement is the dominant factor. jemalloc's per-thread arenas reduce
 malloc contention in make_examples' C++ allocations. CV sees minimal benefit
@@ -203,8 +209,9 @@ because ONNX Runtime and TF have their own internal allocators.
 
 | Use Case | Platform | vCPU | Backend | Parallel CV | $/genome | Notes |
 |----------|----------|------|---------|-------------|----------|-------|
-| **Cheapest** | Oracle A1 (16 OCPU) | 16 | INT8 ONNX+jemalloc | **4-way** | **$0.80** | 3-run, sigma=4.5s |
-| Cheapest (sequential) | Oracle A1 (16 OCPU) | 16 | INT8 ONNX+jemalloc | no | **$1.04** | 3-run, sigma=14s |
+| **Cheapest** | Hetzner CAX41 | 16 (shared) | INT8 ONNX+jemalloc | no | **$0.33** | Shared vCPU, ~6% CV variance |
+| Cheapest (dedicated) | Oracle A1 (16 OCPU) | 16 | INT8 ONNX+jemalloc | **4-way** | **$0.80** | 3-run, sigma=4.5s |
+| Cheapest (sequential, dedicated) | Oracle A1 (16 OCPU) | 16 | INT8 ONNX+jemalloc | no | **$1.04** | 3-run, sigma=14s |
 | Cheapest (A2) | Oracle A2 (16 OCPU) | 32 | INT8 ONNX | 4-way | **~$2.14** | Projected from measured CV |
 | **Best speed/cost** | Graviton4 (c8g.8xlarge) | 32 | BF16+jemalloc | 4-way | **~$3.13** | Projected; fastest wall ~172s |
 | **Fastest ARM64** | Graviton4 (c8g.8xlarge) | 32 | BF16+jemalloc | 4-way | **~$3.13** | CV=61s (N=3, σ=0) |
@@ -214,11 +221,18 @@ because ONNX Runtime and TF have their own internal allocators.
 
 ### Platform Notes
 
-- **Oracle A1 (Altra/N1):** The cheapest option at **$0.80/genome** (4-way parallel CV)
-  or $1.04/genome (sequential). No BF16 or i8mm — use INT8 ONNX with jemalloc.
-  4-way parallel CV gives 1.70x CV speedup (250s→147s). Higher run-to-run variance
-  than other platforms (sigma=14s sequential, sigma=4.5s parallel); use N >= 6 runs
-  for tight sequential benchmarks. See `docs/oracle-a1-benchmark.md`.
+- **Hetzner CAX41 (Neoverse N1):** The cheapest option at **$0.33/genome** (sequential
+  INT8 ONNX + jemalloc). Same Neoverse N1 as Oracle A1 but 3.7x cheaper per hour
+  ($0.043/hr vs $0.16/hr). Shared vCPU introduces ~6% CV rate variance and
+  occasional throttling. OneDNN must be OFF on N1 (`TF_ENABLE_ONEDNN_OPTS=0`) —
+  OneDNN without BF16 adds 29% ME overhead vs Eigen fallback. EU only (Helsinki).
+  Accuracy validated: SNP F1=0.9978, INDEL F1=0.9963.
+- **Oracle A1 (Altra/N1):** The cheapest dedicated-vCPU option at **$0.80/genome**
+  (4-way parallel CV) or $1.04/genome (sequential). No BF16 or i8mm — use INT8
+  ONNX with jemalloc. 4-way parallel CV gives 1.70x CV speedup (250s→147s).
+  Higher run-to-run variance than other platforms (sigma=14s sequential,
+  sigma=4.5s parallel); use N >= 6 runs for tight sequential benchmarks.
+  See `docs/oracle-a1-benchmark.md`.
 - **Graviton3/4:** Use BF16 when BF16 CPU flag is present (`grep bf16 /proc/cpuinfo`).
   INT8 ONNX is the fallback for non-BF16 platforms. Both achieve similar CV rates
   on Graviton3 (0.232 vs 0.237 s/100).

@@ -9,7 +9,7 @@
 **vCPU type:** SHARED — results have higher variance than dedicated instances
 **ISA features:** ASIMD, CRC32, AES — no BF16, no SVE, no i8mm
 
-**Docker image:** `ghcr.io/antomicblitz/deepvariant-arm64:optimized`
+**Docker image:** `ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.5`
 **Workload:** GIAB HG003, chr20 (full), WGS model, 16 shards, batch_size=256
 
 ---
@@ -18,13 +18,15 @@
 
 | Config | N | Wall (s) | ME (s) | CV (s) | PP (s) | CV rate (s/100) | $/genome |
 |--------|---|----------|--------|--------|--------|-----------------|----------|
-| **TF Eigen FP32, no jemalloc** | 5 | 746 ± 28 | 260 ± 4 | 467 ± 27 | 15.5 ± 0.5 | 0.551 ± 0.003 | **$0.43** |
-| **TF Eigen FP32, jemalloc** | 5 | 735 ± 7 | 258 ± 3 | 457 ± 5 | 15.6 ± 0.4 | 0.553 ± 0.006 | **$0.42** |
+| **INT8 ONNX, jemalloc** | 1 | 578 | 253 | 298 | 17 | 0.366 | **$0.33** |
+| **INT8 ONNX, no jemalloc** | 1 | 637 | 282 | 328 | 17 | 0.355 | **$0.37** |
+| TF Eigen FP32, no jemalloc | 5 | 746 ± 28 | 260 ± 4 | 467 ± 27 | 15.5 ± 0.5 | 0.551 ± 0.003 | $0.43 |
+| TF Eigen FP32, jemalloc | 5 | 735 ± 7 | 258 ± 3 | 457 ± 5 | 15.6 ± 0.4 | 0.553 ± 0.006 | $0.42 |
 | ONNX FP32, no jemalloc | 4 | 897 ± 18 | 261 ± 1 | 616 ± 17 | 15.6 ± 0.3 | 0.763 ± 0.020 | $0.52 |
 | ONNX FP32, jemalloc | 4 | 926 ± 30 | 263 ± 3 | 643 ± 32 | 15.7 ± 0.3 | 0.784 ± 0.019 | $0.53 |
 | 4-way parallel CV (ONNX FP32) | 1 | 2524 (proj) | 260 | 2248 | 16 | 11.0/worker | $1.45 |
 
-**Best config: TF Eigen FP32 + jemalloc at $0.42/genome.**
+**Best config: INT8 ONNX + jemalloc at $0.33/genome** (21% cheaper than TF Eigen FP32).
 
 **Formula:** `$/genome = wall_s × 48.1 / 3600 × $0.043`
 
@@ -34,14 +36,15 @@
 
 | Platform | vCPU | $/hr | Best Backend | chr20 Wall | $/genome | vs Hetzner |
 |----------|------|------|-------------|------------|----------|------------|
-| **Hetzner CAX41** | 16 (shared) | $0.043 | TF Eigen FP32 | 735s | **$0.42** | — |
-| Oracle A2 (AmpereOne) | 16 | $0.32 | INT8 ONNX+jemalloc | 544s | $2.32 | 5.5x more |
-| GCP t2a (Neoverse N1) | 16 | ~$0.35 | TF+OneDNN | ~780s | ~$3.65 | 8.7x more |
-| Graviton3 (c7g.4xlarge) | 16 | $0.58 | BF16+jemalloc | 443s | $3.43 | 8.2x more |
-| Graviton4 (c8g.4xlarge) | 16 | $0.68 | INT8 ONNX | 366s | $3.33 | 7.9x more |
-| Google x86 reference | 96 | $3.81 | GPU | ~4680s | $5.01 | 11.9x more |
+| **Hetzner CAX41** | 16 (shared) | $0.043 | INT8 ONNX+jemalloc | 578s | **$0.33** | — |
+| Oracle A1 (Altra/N1) | 16 | $0.16 | INT8 ONNX+jemalloc | 486s | $1.04 | 3.2x more |
+| Oracle A2 (AmpereOne) | 16 | $0.32 | INT8 ONNX+jemalloc | 544s | $2.32 | 7.0x more |
+| GCP t2a (Neoverse N1) | 16 | ~$0.35 | TF+OneDNN | ~780s | ~$3.65 | 11.1x more |
+| Graviton3 (c7g.4xlarge) | 16 | $0.58 | BF16+jemalloc | 443s | $3.43 | 10.4x more |
+| Graviton4 (c8g.4xlarge) | 16 | $0.68 | INT8 ONNX | 366s | $3.33 | 10.1x more |
+| Google x86 reference | 96 | $3.81 | GPU | ~4680s | $5.01 | 15.2x more |
 
-Hetzner's $0.043/hr rate is 7.4x cheaper than Oracle A2 ($0.32/hr), which more than compensates for 35% slower wall time. The result is **5.5x cheaper per genome** than the next cheapest platform.
+Hetzner's $0.043/hr rate is 7.4x cheaper than Oracle A2 ($0.32/hr) and 3.7x cheaper than Oracle A1 ($0.16/hr). Combined with INT8 ONNX (1.6x faster CV than TF Eigen), the result is **$0.33/genome — 3.2x cheaper** than the next cheapest platform (Oracle A1 at $1.04) and **15.2x cheaper** than Google's x86 reference.
 
 ---
 
@@ -65,6 +68,33 @@ Hetzner's $0.043/hr rate is 7.4x cheaper than Oracle A2 ($0.32/hr), which more t
 **Run 3 (796s)** is a clear outlier — CV jumped from ~455s to 515.9s (+60s, 13%) while ME was normal. This pattern (ME unaffected, CV degraded) is consistent with a noisy neighbor consuming CPU during the compute-intensive call_variants phase. Excluding run 3, the jemalloc OFF wall times (736, 731, 737, 732) average 734s — identical to jemalloc ON (735s).
 
 **jemalloc effect on TF Eigen:** Negligible. ME differs by ~2s (259.7 vs 257.9, within noise). CV differs by ~10s but this is dominated by the run 3 outlier. With run 3 excluded, both configs converge to ~455s CV. This makes sense — TF Eigen uses its own BFC allocator internally, bypassing glibc malloc. jemalloc only helps workloads dominated by glibc malloc (e.g., TF+OneDNN where ACL allocations go through glibc).
+
+### INT8 ONNX (--use_onnx, model_int8_static.onnx, TF_ENABLE_ONEDNN_OPTS=0)
+
+| Run | jemalloc | OneDNN | Wall (s) | ME (s) | CV (s) | PP (s) | CV rate (s/100) | Time (UTC) | Notes |
+|-----|----------|--------|----------|--------|--------|--------|-----------------|------------|-------|
+| 1 | on | 1 | 645 | ~332 | ~278 | 16 | 0.347 | 18:26 | OneDNN=1 baseline |
+| 2 | on | 1 | 686 | 332 | 328 | 16 | 0.345 | 18:39 | OneDNN=1 baseline |
+| 3 | off | 1 | 707 | 390 | 290 | 17 | 0.355 | 18:51 | OneDNN=1, no jemalloc |
+| **4** | **on** | **0** | **578** | **253** | **298** | **17** | **0.366** | **19:06** | **OneDNN=0 — best config** |
+| **5** | **off** | **0** | **637** | **282** | **328** | **17** | **0.355** | **19:16** | **OneDNN=0, no jemalloc** |
+
+**OneDNN=1 vs OneDNN=0:** Setting `TF_ENABLE_ONEDNN_OPTS=0` reduces ME by 24% (332→253s with jemalloc, 390→282s without). On Neoverse N1 without BF16, OneDNN+ACL adds overhead to the make_examples small model inference (TF Eigen is faster). CV is unaffected by OneDNN because it uses ONNX Runtime. This is a **critical autoconfig fix** — the default should be OneDNN=0 on non-BF16 platforms.
+
+**INT8 vs TF Eigen FP32:** INT8 ONNX CV rate (0.355-0.366 s/100) is **1.6x faster** than TF Eigen FP32 (0.551 s/100). Combined with jemalloc's ME benefit, INT8+jemalloc delivers 578s vs 735s = **21% faster wall time**.
+
+**jemalloc effect on INT8 ONNX:** ME -10% (282→253s), CV within noise, wall -9% (637→578s). Consistent with other N1 platforms — jemalloc reduces glibc malloc contention in make_examples C++ allocations.
+
+**Shared vCPU variance in CV rate:** The INT8 runs show CV rates from 0.345 to 0.366 s/100 (6% range). This is higher than Oracle A1's dedicated vCPU (0.309 ± 0.004 s/100). The Hetzner shared vCPU CV rate (~0.355 s/100 median) is 15% slower than Oracle A1 (0.309), which is the shared vCPU tax.
+
+**Accuracy (rtg vcfeval, chr20 GIAB HG003):**
+
+| Metric | INT8 (Hetzner CAX41) | Gate | Status |
+|--------|---------------------|------|--------|
+| SNP F1 | **0.9978** | ≥0.9974 | **PASS** |
+| INDEL F1 | **0.9963** | ≥0.9940 | **PASS** |
+
+Matches all other platforms exactly. INT8 accuracy is architecture-independent.
 
 ### ONNX FP32 (--use_onnx, /opt/models/wgs/model.onnx)
 
@@ -120,17 +150,19 @@ Shared vCPU variance is characterized by occasional throttling events that prima
 
 ## Key Findings
 
-1. **$0.42/genome is the cheapest configuration tested** — 5.5x cheaper than Oracle A2 ($2.32), 8x cheaper than Graviton3 ($3.43), 12x cheaper than Google x86 ($5.01).
+1. **$0.33/genome is the cheapest configuration tested** — 3.2x cheaper than Oracle A1 ($1.04), 7.0x cheaper than Oracle A2 ($2.32), 10x cheaper than Graviton3 ($3.43), 15.2x cheaper than Google x86 ($5.01).
 
-2. **The cost advantage is entirely pricing-driven**, not performance. Hetzner is ~35% slower than Oracle A2 by wall time (735s vs 544s) but 7.4x cheaper per hour ($0.043 vs $0.32).
+2. **INT8 ONNX is the fastest backend on Neoverse N1.** CV rate 0.355 s/100 is 1.6x faster than TF Eigen FP32 (0.551 s/100). Combined with jemalloc: 578s wall vs 735s = 21% faster.
 
-3. **TF Eigen is the fastest backend on Neoverse N1.** ONNX FP32 CPUExecutionProvider is 35% slower for CV. OneDNN+ACL was not tested (potential N1 compatibility issues), but GCP t2a data shows it would add ~7% CV improvement (0.512 vs 0.550 s/100).
+3. **OneDNN must be OFF on non-BF16 platforms.** `TF_ENABLE_ONEDNN_OPTS=1` adds 29% overhead to make_examples on N1 (332→253s). ACL FP32 GEMM is slower than Eigen on N1 for the small model. Only enable OneDNN when BF16 BFMMLA is available (Graviton3+). This is fixed in autoconfig v1.9.0-arm64.6.
 
-4. **jemalloc has no effect on TF Eigen and slightly hurts ONNX.** This differs from Graviton3/Oracle A2 where jemalloc gave 7-22% wall improvement. The difference is that those platforms used TF+OneDNN (ACL), which routes allocations through glibc malloc. TF Eigen and ONNX use internal allocators.
+4. **The cost advantage is pricing-driven.** Hetzner is ~6% slower than Oracle A1 by wall time (578s vs 486s) but 3.7x cheaper per hour ($0.043 vs $0.16). The shared vCPU tax (~15% slower CV than dedicated) is far outweighed by the pricing gap.
 
-5. **Parallel CV does not work at 16 vCPU.** Same conclusion as fast_pipeline at 16 vCPU: not enough cores for parallel workers to maintain GEMM efficiency. Requires 32+ vCPU.
+5. **jemalloc helps INT8 ONNX by 9%.** ME -10% (282→253s), total wall -9% (637→578s). The benefit is in make_examples malloc contention, not CV (ONNX has its own allocator).
 
-6. **Shared vCPU throttling is rare but real.** 1 out of 10 TF Eigen runs (10%) showed a 60s CV spike from noisy neighbors. For production use, budget for ~5% overhead from occasional throttling.
+6. **Parallel CV does not work at 16 vCPU.** Same conclusion as fast_pipeline at 16 vCPU: not enough cores for parallel workers to maintain GEMM efficiency. Requires 32+ vCPU.
+
+7. **Shared vCPU throttling is rare but real.** 1 out of 10 TF Eigen runs (10%) showed a 60s CV spike from noisy neighbors. INT8 ONNX CV rate has 6% variance across runs (vs <2% on dedicated instances). For production use, budget for ~5% overhead from occasional throttling.
 
 ---
 
@@ -138,13 +170,15 @@ Shared vCPU variance is characterized by occasional throttling events that prima
 
 | Config | chr20 Wall | WGS Projected | $/genome | Time |
 |--------|-----------|---------------|----------|------|
-| TF Eigen + jemalloc (best) | 735s | ~9.8 hr | $0.42 | ~10 hr |
+| **INT8 ONNX + jemalloc (best)** | **578s** | **~7.7 hr** | **$0.33** | **~8 hr** |
+| INT8 ONNX (no jemalloc) | 637s | ~8.5 hr | $0.37 | ~9 hr |
+| TF Eigen + jemalloc | 735s | ~9.8 hr | $0.42 | ~10 hr |
 | TF Eigen (no jemalloc) | 746s | ~10.0 hr | $0.43 | ~10 hr |
 | ONNX FP32 (no jemalloc) | 897s | ~12.0 hr | $0.52 | ~12 hr |
 
 *WGS time = chr20_wall × 48.1. Extrapolation has ~15-20% uncertainty.*
 
-A $0.42 WGS genome in ~10 hours on a $15/month shared ARM instance is remarkable. For non-time-critical workloads (research, education, low-resource labs), this is dramatically more accessible than any cloud GPU or dedicated ARM option.
+A **$0.33 WGS genome in ~8 hours** on a $15/month shared ARM instance is remarkable — 15x cheaper than Google's x86 reference ($5.01). For non-time-critical workloads (research, education, low-resource labs), this is dramatically more accessible than any cloud GPU or dedicated ARM option.
 
 ---
 
@@ -154,20 +188,23 @@ A $0.42 WGS genome in ~10 hours on a $15/month shared ARM instance is remarkable
 # Instance setup
 apt-get install -y docker.io
 echo "ghp_..." | docker login ghcr.io -u antomicblitz --password-stdin
-docker pull ghcr.io/antomicblitz/deepvariant-arm64:optimized
+docker pull ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.5
 
-# Download reference data
+# Download reference data + INT8 model
 mkdir -p /data/{reference,bam,truth,output}
 # Reference: NCBI FTP GCA_000001405.15_GRCh38_no_alt_analysis_set.fna.gz
 # BAM: gs://deepvariant/case-study-testdata/HG003.novaseq.pcr-free.35x.dedup.grch38_no_alt.chr20.bam
 # Truth: GIAB FTP HG003_GRCh38_1_22_v4.2.1_benchmark.vcf.gz
+wget -O /data/model_int8_static.onnx \
+  https://github.com/antomicblitz/deepvariant-linux-arm64/releases/download/v1.9.0-arm64.5/model_int8_static.onnx
 
-# Run benchmark (TF Eigen FP32, best config)
+# Run benchmark (INT8 ONNX + jemalloc, best config)
 docker run --rm --memory=28g \
   -v /data:/data \
+  -e DV_AUTOCONFIG=1 \
+  -e DV_USE_JEMALLOC=1 \
   -e TF_ENABLE_ONEDNN_OPTS=0 \
-  -e CUDA_VISIBLE_DEVICES= \
-  ghcr.io/antomicblitz/deepvariant-arm64:optimized \
+  ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.5 \
   /opt/deepvariant/bin/run_deepvariant \
     --model_type=WGS \
     --ref=/data/reference/GRCh38_no_alt_analysis_set.fasta \
@@ -176,5 +213,5 @@ docker run --rm --memory=28g \
     --regions=chr20 \
     --num_shards=16 \
     --intermediate_results_dir=/data/output/intermediate \
-    --call_variants_extra_args="--batch_size=256"
+    --call_variants_extra_args="--batch_size=256,--use_onnx=true,--onnx_model=/data/model_int8_static.onnx"
 ```

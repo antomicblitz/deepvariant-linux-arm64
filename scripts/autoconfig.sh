@@ -103,15 +103,15 @@ case "${CPU_FAMILY}" in
       NOTES+=("Graviton3/4: BF16 BFMMLA active via OneDNN.")
     else
       BACKEND="onnx_int8"
-      TF_ONEDNN="1"
-      NOTES+=("Graviton3/4 without BF16 flag: using ONNX INT8.")
+      TF_ONEDNN="0"
+      NOTES+=("Graviton3/4 without BF16 flag: using ONNX INT8, OneDNN OFF.")
     fi
     ;;
   neoverse-n1|neoverse-n2)
     BACKEND="onnx_int8"
-    TF_ONEDNN="1"
+    TF_ONEDNN="0"
     NOTES+=("Neoverse-N1/N2: no BF16, ONNX INT8 is 2.3x over FP32.")
-    # OneDNN=ON is safe here — controls make_examples small model only, CV uses ONNX.
+    NOTES+=("OneDNN OFF: ACL FP32 adds 29% ME overhead on N1 without BF16 (332s vs 258s).")
     ;;
   *)
     BACKEND="tf_fp32"
@@ -120,6 +120,13 @@ case "${CPU_FAMILY}" in
     EXIT_CODE=2
     ;;
 esac
+
+# Safety net: OneDNN is only beneficial with BF16 BFMMLA. Without BF16, ACL FP32
+# adds overhead to make_examples small model (29% on N1). Force OFF when no BF16.
+if [[ "${HAS_BF16}" == "false" && "${TF_ONEDNN}" == "1" ]]; then
+  TF_ONEDNN="0"
+  WARNINGS+=("Forced OneDNN OFF: no BF16 support detected. ACL FP32 adds ME overhead without benefit.")
+fi
 
 # Thread recommendation: INT8 ONNX CV saturates at 16 threads (verified benchmark)
 if [[ "${BACKEND}" == "onnx_int8" && "${VCPUS}" -gt 16 ]]; then

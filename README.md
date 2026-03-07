@@ -21,6 +21,7 @@ ARM64 cloud instances are 25-50% cheaper per vCPU than x86 equivalents. This for
 | Google DeepVariant x86 (96 vCPU) | ~1.3 hr | ~$5.01 | Open source |
 | Sentieon DNAscope (Graviton) | ~1-2 hr | ~$2-4 + **per-sample license** | Proprietary |
 | NVIDIA Parabricks (GPU) | 8-16 min | <$2 + **license** | Proprietary |
+| **This fork (Hetzner CAX41, INT8 ONNX)** | **~7.7 hr** | **~$0.33‡** | **Open source** |
 | **This fork (16 OCPU Oracle A1, 4-way CV)** | **~5.0 hr** | **~$0.80†** | **Open source** |
 | **This fork (16 OCPU Oracle A1, INT8+jemalloc)** | **~6.5 hr** | **~$1.04†** | **Open source** |
 | **This fork (32 vCPU Graviton4, 4-way CV)** | **~2.3 hr** | **~$3.13** | **Open source** |
@@ -29,8 +30,10 @@ ARM64 cloud instances are 25-50% cheaper per vCPU than x86 equivalents. This for
 | This fork (16 OCPU Oracle A2, INT8+jemalloc) | ~7.3 hr | ~$2.32† | Open source |
 
 > †Oracle A1 pricing: $0.01/OCPU/hr — 16 OCPU (16 vCPU) = $0.16/hr. Oracle A2 pricing: $0.04/OCPU/hr — 16 OCPU (32 vCPU) = $0.64/hr; 8 OCPU (16 vCPU) = $0.32/hr. jemalloc enabled (`-e DV_USE_JEMALLOC=1`). Oracle A1 4-way CV measured (3-run avg); other parallel CV rows projected from measured CV times + measured sequential ME/PP.
+>
+> ‡Hetzner CAX41: ~$0.043/hr (€0.0396/hr). Shared vCPU — occasional throttling (~5%). Available EU only.
 
-> **6.3x cheaper than Google's x86 reference** — Oracle A1 with 4-way parallel CV at **$0.80/genome** (measured, 3-run avg). Oracle A2 projected at ~$2.14/genome, Graviton4 at ~$3.13/genome (vs $5.01 x86).
+> **15.2x cheaper than Google's x86 reference** — Hetzner CAX41 with INT8 at **$0.33/genome** (shared vCPU, EU only). Dedicated-vCPU leader: Oracle A1 at **$0.80/genome** (4-way parallel CV, measured 3-run avg). Oracle A2 projected at ~$2.14/genome, Graviton4 at ~$3.13/genome (vs $5.01 x86).
 
 **Use this fork when** you want open-source DeepVariant on ARM64, or you are cost-sensitive and can tolerate longer runtimes (batch processing, research pipelines). **Use GPU-accelerated DeepVariant** when you need fast turnaround.
 
@@ -56,6 +59,8 @@ All benchmarks: GIAB HG003, full chr20, accuracy validated with `rtg vcfeval`. R
 | Oracle A2 (AmpereOne) | 16 OCPU | TF Eigen FP32 | 0.387 s/100 | 10m29s |
 | **Oracle A1 (Altra/N1)** | **16 OCPU** | **INT8 ONNX** | **0.309 s/100** | **~8m29s** |
 | Oracle A1 (Altra/N1) | 16 OCPU | TF Eigen FP32 | 0.588 s/100 | 12m15s |
+| **Hetzner CAX41 (Altra/N1)** | **16 (shared)** | **INT8 ONNX** | **0.366 s/100** | **~8m45s** |
+| Hetzner CAX41 (Altra/N1) | 16 (shared) | TF Eigen FP32 | 0.551 s/100 | 12m15s |
 
 BF16 and INT8 achieve nearly identical call_variants rates on Graviton3. INT8 is the better choice on platforms **without** BF16 support (Neoverse-N1, Ampere Altra), where it provides a 2.3x speedup over FP32 ONNX (isolated benchmark: 0.225 s/100 vs 0.517 s/100).
 
@@ -89,6 +94,10 @@ BF16 and INT8 achieve nearly identical call_variants rates on Graviton3. INT8 is
 | **Oracle A1 (Altra/N1)** | **INT8 ONNX** | **off** | **245s** | **247s (0.309)** | **14s** | **509s** | **$0.16** | **$1.09** | **4** |
 | **Oracle A1 (Altra/N1)** | **INT8 ONNX** | **on** | **219s** | **250s (0.313)** | **14s** | **486s** | **$0.16** | **$1.04** | 3 |
 | Oracle A1 (Altra/N1) | TF Eigen FP32 | off | 247s | 470s (0.588) | 14s | **735s** | $0.16 | $1.57 | 1* |
+| **Hetzner CAX41 (Altra/N1)** | **INT8 ONNX** | **on** | **253s** | **298s (0.366)** | **17s** | **578s** | **$0.043** | **$0.33** | 1 |
+| Hetzner CAX41 (Altra/N1) | TF Eigen FP32 | on | 258s | 457s (0.551) | 16s | 735s | $0.043 | $0.42 | 5 |
+
+> Hetzner CAX41 uses shared vCPU — occasional ~5% throttling causes ~6% CV rate variance. Available in EU regions only. Pricing: ~$0.043/hr (€0.0396/hr).
 
 **32-vCPU sequential + parallel call_variants:**
 
