@@ -1,0 +1,17 @@
+--- a/src/cpu/aarch64/acl_convolution_utils.cpp
++++ b/src/cpu/aarch64/acl_convolution_utils.cpp
+@@ -346,6 +346,14 @@
+         const primitive_attr_t &attr) {
+     acp.is_indirect = true;
+     auto math_mode = get_fpmath_mode();
++
++    // BF16 fast_math mode crashes with indirect GEMM (NEGEMMConv2d /
++    // CpuGemmDirectConv2d) because the internal weight permutation
++    // creates tensor dimensions that the NEON BF16 assembly dispatch
++    // cannot handle, resulting in a null-pointer dereference.
++    // Fall through to acl_gemm_convolution (im2col + GEMM) which works.
++    if (one_of(math_mode, fpmath_mode::bf16, fpmath_mode::any))
++        return status::unimplemented;
+     // Indirect convolution results in slowdown for low thread count or 1x1
+     // kernels, so fall back to GEMM-based convolution in these cases
+     if (one_of(true, weights_md.ndims != 4,
