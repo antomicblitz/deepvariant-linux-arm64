@@ -17,8 +17,8 @@
 #
 # Requirements:
 #   - ONNX backend only (TF SavedModel uses ~26 GB per process — would OOM)
-#   - num_shards must be divisible by num_cv_workers
-#   - 32+ vCPU recommended (each worker gets nproc/num_cv_workers threads)
+#   - num_shards must be divisible by num_cv_workers (auto mode handles this)
+#   - Auto-scales: ~8 threads/worker, 1 worker on <16 vCPU, scales to nproc/8
 #
 # How it works:
 #   1. Runs make_examples (same as run_deepvariant)
@@ -39,7 +39,7 @@ REF=""
 READS=""
 OUTPUT_VCF=""
 NUM_SHARDS=""
-NUM_CV_WORKERS=4
+NUM_CV_WORKERS="auto"
 REGIONS=""
 INTERMEDIATE_RESULTS_DIR=""
 BATCH_SIZE=256
@@ -61,7 +61,7 @@ print_usage() {
   echo "  --num_shards=N           Number of make_examples shards"
   echo ""
   echo "Optional:"
-  echo "  --num_cv_workers=N       Parallel CV workers (default: 4)"
+  echo "  --num_cv_workers=N       Parallel CV workers (default: auto — nproc/8, min 1)"
   echo "  --regions=REGION         Genomic region (e.g., chr20)"
   echo "  --intermediate_results_dir=PATH"
   echo "  --batch_size=N           CV batch size (default: 256)"
@@ -104,6 +104,57 @@ for var_name in MODEL_TYPE REF READS OUTPUT_VCF NUM_SHARDS; do
     exit 1
   fi
 done
+
+# Detect available RAM (respects Docker --memory limit via cgroup).
+# Each INT8 ONNX CV worker uses ~3 GB RSS. Reserve 4 GB for ME/PP/OS.
+get_ram_gb() {
+  local bytes
+  # cgroup v2
+  if [[ -f /sys/fs/cgroup/memory.max ]]; then
+    bytes=$(cat /sys/fs/cgroup/memory.max)
+    if [[ "$bytes" != "max" ]]; then
+      echo $(( bytes / 1073741824 ))
+      return
+    fi
+  fi
+  # cgroup v1
+  if [[ -f /sys/fs/cgroup/memory/memory.limit_in_bytes ]]; then
+    bytes=$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes)
+    if [[ $bytes -lt 9000000000000000000 ]]; then
+      echo $(( bytes / 1073741824 ))
+      return
+    fi
+  fi
+  # Fallback: host total memory
+  awk '/MemTotal/ {printf "%d", $2/1024/1024}' /proc/meminfo
+}
+
+# Auto-scale CV workers if not explicitly set.
+# Target ~8 threads per worker (GEMM sweet spot; saturates at ~16).
+# Cap by available RAM (~3 GB per worker + 4 GB overhead).
+# Finds the largest worker count that evenly divides NUM_SHARDS.
+if [[ "$NUM_CV_WORKERS" == "auto" ]]; then
+  NCPU=$(nproc)
+  RAM_GB=$(get_ram_gb)
+  MAX_BY_CPU=$(( NCPU / 8 ))
+  MAX_BY_RAM=$(( (RAM_GB - 4) / 3 ))
+  [[ $MAX_BY_CPU -lt 1 ]] && MAX_BY_CPU=1
+  [[ $MAX_BY_RAM -lt 1 ]] && MAX_BY_RAM=1
+  DESIRED=$MAX_BY_CPU
+  [[ $MAX_BY_RAM -lt $DESIRED ]] && DESIRED=$MAX_BY_RAM
+  NUM_CV_WORKERS=1
+  for ((w=DESIRED; w>=2; w--)); do
+    if [[ $((NUM_SHARDS % w)) -eq 0 ]]; then
+      NUM_CV_WORKERS=$w
+      break
+    fi
+  done
+  if [[ $RAM_GB -lt 7 ]]; then
+    echo "WARNING: Only ${RAM_GB} GB RAM detected. Minimum ~7 GB needed (4 GB overhead + 3 GB per CV worker)." >&2
+    echo "  Consider increasing Docker --memory or using sequential mode (run_deepvariant)." >&2
+  fi
+  echo "Auto-scaled: ${NCPU} vCPU, ${RAM_GB} GB RAM → ${NUM_CV_WORKERS} CV workers (cpu-max=${MAX_BY_CPU}, ram-max=${MAX_BY_RAM})"
+fi
 
 # Validate num_cv_workers
 if [[ "$NUM_CV_WORKERS" -lt 1 ]]; then
