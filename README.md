@@ -233,7 +233,7 @@ docker run -e DV_AUTOCONFIG=1 -e DV_USE_JEMALLOC=1 \
   --num_shards=32 --num_cv_workers=4
 ```
 
-ONNX backend only. `--num_shards` must be divisible by `--num_cv_workers`.
+ONNX backend only. `--num_shards` must be divisible by `--num_cv_workers`. On NVMe or tmpfs storage, add `--nocompress_intermediates` to skip gzip on TFRecord intermediates (~4% faster ME, ~12 GB disk for chr20).
 
 <details>
 <summary>All run_parallel_cv.sh options</summary>
@@ -284,9 +284,9 @@ docker pull ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.5
 
 | Platform | Key setting | Why |
 |----------|------------|-----|
-| **Graviton3/4** (c7g, c8g) | `DV_AUTOCONFIG=1` enables BF16 automatically | Has BF16 BFMMLA — 38% faster CV |
-| **Oracle A1** (Altra, Neoverse-N1) | `DV_AUTOCONFIG=1` disables OneDNN | OneDNN+ACL adds 29% ME overhead on N1 without BF16 |
-| **Oracle A2** (AmpereOne) | `TF_ENABLE_ONEDNN_OPTS=0` **mandatory** | OneDNN+ACL causes SIGILL on AmpereOne ISA |
+| **Graviton3/4** (c7g, c8g) | Autoconfig enables BF16 + OneDNN | Has BF16 BFMMLA — 38% faster CV |
+| **Oracle A1** (Altra, Neoverse-N1) | Autoconfig selects INT8 ONNX, disables OneDNN | OneDNN+ACL adds 29% ME overhead on N1 without BF16 |
+| **Oracle A2** (AmpereOne) | Autoconfig blocks OneDNN (SIGILL), selects INT8 ONNX | ACL compiled for N1 crashes on AmpereOne ISA — both ME and CV |
 | **Hetzner CAX** (shared Altra) | Same as Oracle A1 | Shared vCPU; ~5% throttling variance |
 
 `DV_AUTOCONFIG=1` handles all of the above automatically. You only need manual env vars if you want to override the defaults.
@@ -398,7 +398,7 @@ Full build: several hours on an 8-core machine (~2273 Bazel actions).
 
 **New files:** `Dockerfile.arm64`, `Dockerfile.arm64.runtime`, `settings_arm64.sh`, `build-prereq-arm64.sh`, `build_release_binaries_arm64.sh`, and `scripts/` (benchmarking, quantization, parallel CV, autoconfig, jemalloc ablation).
 
-**Key modifications to upstream:** `third_party/htslib.BUILD` (NEON detection), `third_party/libssw.BUILD` (sse2neon), `tools/build_absl.sh` (clang-14), `run-prereq.sh` (Ubuntu 24.04), `deepvariant/call_variants.py` (ONNX inference, INT8 renormalization, SavedModel warmup).
+**Key modifications to upstream:** `third_party/htslib.BUILD` (NEON detection), `third_party/libssw.BUILD` (sse2neon), `tools/build_absl.sh` (clang-14), `run-prereq.sh` (Ubuntu 24.04), `deepvariant/call_variants.py` (ONNX inference, INT8 renormalization, SavedModel warmup). ACL v23.08 SVE filter and OneDNN indirect GEMM patches for AmpereOne preserved in `third_party/` for source rebuilds.
 
 <details>
 <summary>Build fixes</summary>
