@@ -272,6 +272,13 @@ for ((w=0; w<NUM_CV_WORKERS; w++)); do
   done
 done
 
+# Cap OMP_NUM_THREADS per worker to prevent thread oversubscription.
+# Without this, each worker defaults to $(nproc) threads — on a 16-vCPU
+# machine with 4 workers, that's 64 threads competing for 16 cores.
+export OMP_NUM_THREADS=$THREADS_PER_WORKER
+export OMP_PROC_BIND=false
+export OMP_PLACES=cores
+
 # Launch all workers in parallel
 PIDS=()
 for ((w=0; w<NUM_CV_WORKERS; w++)); do
@@ -279,9 +286,6 @@ for ((w=0; w<NUM_CV_WORKERS; w++)); do
   CV_OUTFILE=$(printf "%s/call_variants_output-%05d-of-%05d.tfrecord%s" \
     "$INTERMEDIATE_RESULTS_DIR" "$w" "$NUM_CV_WORKERS" "$GZ_EXT")
 
-  OMP_NUM_THREADS=$THREADS_PER_WORKER \
-  OMP_PROC_BIND=false \
-  OMP_PLACES=cores \
   /opt/deepvariant/bin/call_variants \
     --outfile="$CV_OUTFILE" \
     --examples="${WORKER_DIR}/examples.tfrecord@${SHARDS_PER_WORKER}${GZ_EXT}" \
