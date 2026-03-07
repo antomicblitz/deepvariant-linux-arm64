@@ -39,6 +39,7 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
@@ -96,9 +97,11 @@ class ExampleWriter::TfRecordImpl : public ExampleWriter::Impl {
       return;
     }
 
+    std::string compression =
+        absl::EndsWith(absl::AsciiStrToLower(path), ".gz") ? "GZIP" : "";
     const tensorflow::io::RecordWriterOptions& options =
         tensorflow::io::RecordWriterOptions::CreateRecordWriterOptions(
-            "GZIP");
+            compression);
 
     tf_ = std::make_unique<tensorflow::io::RecordWriter>(
             tf_file_.get(),

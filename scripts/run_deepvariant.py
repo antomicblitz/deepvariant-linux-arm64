@@ -136,6 +136,17 @@ _INTERMEDIATE_RESULTS_DIR = flags.DEFINE_string(
         'used to to store intermediate outputs.'
     ),
 )
+_NOCOMPRESS_INTERMEDIATES = flags.DEFINE_bool(
+    'nocompress_intermediates',
+    False,
+    (
+        'Optional. If set, write intermediate TFRecord files '
+        '(examples, gvcf, call_variant_outputs) without gzip compression. '
+        'Saves ~8%% of make_examples CPU at the cost of ~4x larger '
+        'intermediate files. Recommended on NVMe or tmpfs. '
+        'No effect when --fast_pipeline is enabled.'
+    ),
+)
 _LOGGING_DIR = flags.DEFINE_string(
     'logging_dir',
     None,
@@ -713,21 +724,22 @@ def create_all_commands_and_logfiles(intermediate_results_dir):
   check_flags()
   commands = []
   # make_examples
+  gz_ext = '' if _NOCOMPRESS_INTERMEDIATES.value else '.gz'
   nonvariant_site_tfrecord_path = None
   if _OUTPUT_GVCF.value is not None:
     nonvariant_site_tfrecord_path = os.path.join(
         intermediate_results_dir,
-        'gvcf.tfrecord@{}.gz'.format(_NUM_SHARDS.value),
+        'gvcf.tfrecord@{}{}'.format(_NUM_SHARDS.value, gz_ext),
     )
 
   examples = os.path.join(
       intermediate_results_dir,
-      'make_examples.tfrecord@{}.gz'.format(_NUM_SHARDS.value),
+      'make_examples.tfrecord@{}{}'.format(_NUM_SHARDS.value, gz_ext),
   )
   small_model_cvo_records = os.path.join(
       intermediate_results_dir,
-      'make_examples_call_variant_outputs.tfrecord@{}.gz'.format(
-          _NUM_SHARDS.value
+      'make_examples_call_variant_outputs.tfrecord@{}{}'.format(
+          _NUM_SHARDS.value, gz_ext
       ),
   )
 
@@ -769,7 +781,8 @@ def create_all_commands_and_logfiles(intermediate_results_dir):
 
   # call_variants
   call_variants_output = os.path.join(
-      intermediate_results_dir, 'call_variants_output.tfrecord.gz'
+      intermediate_results_dir,
+      'call_variants_output.tfrecord{}'.format(gz_ext),
   )
   commands.append(
       call_variants_command(

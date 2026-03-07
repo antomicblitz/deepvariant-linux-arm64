@@ -533,11 +533,13 @@ def get_dataset(
         shuffle=False,
     )
 
+    compression = 'GZIP' if path.endswith('.gz') else ''
+
     def load_dataset(filename):
       dataset = tf.data.TFRecordDataset(
           filename,
           buffer_size=_DEFAULT_PREFETCH_BUFFER_BYTES,
-          compression_type='GZIP',
+          compression_type=compression,
       )
       return dataset
 
@@ -573,7 +575,8 @@ def post_processing(
     include_debug_info: If true, include debug information.
     debugging_true_label_mode: If true, include true label from the example.
   """
-  writer = tfrecord.Writer(output_file, compression_type='GZIP')
+  cvo_compression = 'GZIP' if output_file.endswith('.gz') else ''
+  writer = tfrecord.Writer(output_file, compression_type=cvo_compression)
   n_examples = 0
   n_batches = 0
   while True:
@@ -632,12 +635,18 @@ def write_empty_output_file(examples_filename: str, output_file: str) -> None:
   )
   # Write empty shards
   total_writer_process = 1
-  output_file = output_file.replace(
-      '.tfrecord.gz', '@' + str(total_writer_process) + '.tfrecord.gz'
-  )
+  if '.tfrecord.gz' in output_file:
+    output_file = output_file.replace(
+        '.tfrecord.gz', '@' + str(total_writer_process) + '.tfrecord.gz'
+    )
+  else:
+    output_file = output_file.replace(
+        '.tfrecord', '@' + str(total_writer_process) + '.tfrecord'
+    )
+  empty_compression = 'GZIP' if output_file.endswith('.gz') else ''
   paths = sharded_file_utils.maybe_generate_sharded_filenames(output_file)
   for path in paths:
-    tfrecord.write_tfrecords([], path, compression_type='GZIP')
+    tfrecord.write_tfrecords([], path, compression_type=empty_compression)
 
 
 def load_model_and_check_shape(

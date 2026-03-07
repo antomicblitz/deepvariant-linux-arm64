@@ -1149,10 +1149,12 @@ class OutputsWriter:
     self.examples_filename = None
 
     if options.candidates_filename:
+      cand_path = self._add_suffix(options.candidates_filename, suffix)
       self._add_writer(
           'candidates',
           dv_utils.get_tf_record_writer(
-              self._add_suffix(options.candidates_filename, suffix)
+              cand_path,
+              compression_type='GZIP' if cand_path.endswith('.gz') else '',
           ),
       )
 
@@ -1172,10 +1174,12 @@ class OutputsWriter:
       )
 
     if options.gvcf_filename:
+      gvcf_path = self._add_suffix(options.gvcf_filename, suffix)
       self._add_writer(
           'gvcfs',
           dv_utils.get_tf_record_writer(
-              self._add_suffix(options.gvcf_filename, suffix)
+              gvcf_path,
+              compression_type='GZIP' if gvcf_path.endswith('.gz') else '',
           ),
       )
 
@@ -1189,10 +1193,14 @@ class OutputsWriter:
         writer.write('\t'.join(RUNTIME_BY_REGION_COLUMNS) + '\n')
 
     if options.call_small_model_examples:
+      cvo_path = self._add_suffix(
+          self.examples_filename, 'call_variant_outputs'
+      )
       self._add_writer(
           'call_variant_outputs',
           dv_utils.get_tf_record_writer(
-              self._add_suffix(self.examples_filename, 'call_variant_outputs')
+              cvo_path,
+              compression_type='GZIP' if cvo_path.endswith('.gz') else '',
           ),
       )
 
@@ -1232,10 +1240,12 @@ class OutputsWriter:
       self._add_writer('sitelist', epath.Path(sitelist_fname).open('w'))
 
     if options.write_small_model_examples:
+      sm_path = self._add_suffix(self.examples_filename, 'small_model')
       self._add_writer(
           'small_model_examples',
           dv_utils.get_tf_record_writer(
-              self._add_suffix(self.examples_filename, 'small_model')
+              sm_path,
+              compression_type='GZIP' if sm_path.endswith('.gz') else '',
           ),
       )
 

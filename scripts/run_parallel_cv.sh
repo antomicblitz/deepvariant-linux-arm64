@@ -48,6 +48,7 @@ CUSTOMIZED_MODEL=""
 SAMPLE_NAME=""
 OUTPUT_GVCF=""
 POSTPROCESS_CPUS=""
+NOCOMPRESS=false
 
 print_usage() {
   echo "Usage: run_parallel_cv.sh [options]"
@@ -69,6 +70,7 @@ print_usage() {
   echo "  --sample_name=NAME       Sample name for VCF header"
   echo "  --output_gvcf=PATH       Output gVCF (optional)"
   echo "  --postprocess_cpus=N     CPUs for postprocess (default: num_shards)"
+  echo "  --nocompress             Write uncompressed TFRecords (saves ~8% ME CPU)"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -87,6 +89,7 @@ while [[ $# -gt 0 ]]; do
     --sample_name=*) SAMPLE_NAME="${1#*=}" ;;
     --output_gvcf=*) OUTPUT_GVCF="${1#*=}" ;;
     --postprocess_cpus=*) POSTPROCESS_CPUS="${1#*=}" ;;
+    --nocompress) NOCOMPRESS=true ;;
     --help|-h) print_usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; print_usage; exit 1 ;;
   esac
@@ -144,6 +147,13 @@ if [[ -z "$INTERMEDIATE_RESULTS_DIR" ]]; then
 fi
 mkdir -p "$INTERMEDIATE_RESULTS_DIR"
 
+# Set file extension based on compression mode
+if [[ "$NOCOMPRESS" == "true" ]]; then
+  GZ_EXT=""
+else
+  GZ_EXT=".gz"
+fi
+
 THREADS_PER_WORKER=$(( $(nproc) / NUM_CV_WORKERS ))
 SHARDS_PER_WORKER=$(( NUM_SHARDS / NUM_CV_WORKERS ))
 
@@ -163,8 +173,8 @@ echo "========================================"
 echo ""
 echo "=== Step 1/3: make_examples ==="
 
-EXAMPLES="${INTERMEDIATE_RESULTS_DIR}/make_examples.tfrecord@${NUM_SHARDS}.gz"
-SMALL_MODEL_CVO="${INTERMEDIATE_RESULTS_DIR}/make_examples_call_variant_outputs.tfrecord@${NUM_SHARDS}.gz"
+EXAMPLES="${INTERMEDIATE_RESULTS_DIR}/make_examples.tfrecord@${NUM_SHARDS}${GZ_EXT}"
+SMALL_MODEL_CVO="${INTERMEDIATE_RESULTS_DIR}/make_examples_call_variant_outputs.tfrecord@${NUM_SHARDS}${GZ_EXT}"
 
 # Build make_examples command. Uses GNU parallel to launch NUM_SHARDS workers,
 # each handling one shard (--task N). This matches how run_deepvariant.py works.
@@ -182,7 +192,7 @@ if [[ -n "$SAMPLE_NAME" ]]; then
   ME_BASE_ARGS+=("--sample_name" "$SAMPLE_NAME")
 fi
 if [[ -n "$OUTPUT_GVCF" ]]; then
-  GVCF_TFRECORD="${INTERMEDIATE_RESULTS_DIR}/gvcf.tfrecord@${NUM_SHARDS}.gz"
+  GVCF_TFRECORD="${INTERMEDIATE_RESULTS_DIR}/gvcf.tfrecord@${NUM_SHARDS}${GZ_EXT}"
   ME_BASE_ARGS+=("--gvcf" "$GVCF_TFRECORD")
 fi
 
@@ -246,14 +256,14 @@ for ((w=0; w<NUM_CV_WORKERS; w++)); do
 
   LOCAL_IDX=0
   for ((s=SHARD_START; s<SHARD_END; s++)); do
-    SRC=$(printf "%s/make_examples.tfrecord-%05d-of-%05d.gz" "$INTERMEDIATE_RESULTS_DIR" "$s" "$NUM_SHARDS")
-    DST=$(printf "%s/examples.tfrecord-%05d-of-%05d.gz" "$WORKER_DIR" "$LOCAL_IDX" "$SHARDS_PER_WORKER")
+    SRC=$(printf "%s/make_examples.tfrecord-%05d-of-%05d%s" "$INTERMEDIATE_RESULTS_DIR" "$s" "$NUM_SHARDS" "$GZ_EXT")
+    DST=$(printf "%s/examples.tfrecord-%05d-of-%05d%s" "$WORKER_DIR" "$LOCAL_IDX" "$SHARDS_PER_WORKER" "$GZ_EXT")
     ln -sf "$SRC" "$DST"
 
     # Copy example_info.json for shard 0 of each worker
     if [[ $LOCAL_IDX -eq 0 ]]; then
-      SRC_INFO=$(printf "%s/make_examples.tfrecord-%05d-of-%05d.gz.example_info.json" "$INTERMEDIATE_RESULTS_DIR" "$s" "$NUM_SHARDS")
-      DST_INFO=$(printf "%s/examples.tfrecord-%05d-of-%05d.gz.example_info.json" "$WORKER_DIR" 0 "$SHARDS_PER_WORKER")
+      SRC_INFO=$(printf "%s/make_examples.tfrecord-%05d-of-%05d%s.example_info.json" "$INTERMEDIATE_RESULTS_DIR" "$s" "$NUM_SHARDS" "$GZ_EXT")
+      DST_INFO=$(printf "%s/examples.tfrecord-%05d-of-%05d%s.example_info.json" "$WORKER_DIR" 0 "$SHARDS_PER_WORKER" "$GZ_EXT")
       if [[ -f "$SRC_INFO" ]]; then
         ln -sf "$SRC_INFO" "$DST_INFO"
       fi
@@ -266,15 +276,15 @@ done
 PIDS=()
 for ((w=0; w<NUM_CV_WORKERS; w++)); do
   WORKER_DIR="${INTERMEDIATE_RESULTS_DIR}/cv_worker_${w}"
-  CV_OUTFILE=$(printf "%s/call_variants_output-%05d-of-%05d.tfrecord.gz" \
-    "$INTERMEDIATE_RESULTS_DIR" "$w" "$NUM_CV_WORKERS")
+  CV_OUTFILE=$(printf "%s/call_variants_output-%05d-of-%05d.tfrecord%s" \
+    "$INTERMEDIATE_RESULTS_DIR" "$w" "$NUM_CV_WORKERS" "$GZ_EXT")
 
   OMP_NUM_THREADS=$THREADS_PER_WORKER \
   OMP_PROC_BIND=false \
   OMP_PLACES=cores \
   /opt/deepvariant/bin/call_variants \
     --outfile="$CV_OUTFILE" \
-    --examples="${WORKER_DIR}/examples.tfrecord@${SHARDS_PER_WORKER}.gz" \
+    --examples="${WORKER_DIR}/examples.tfrecord@${SHARDS_PER_WORKER}${GZ_EXT}" \
     --checkpoint="$MODEL_CKPT" \
     --use_onnx \
     --onnx_model="$ONNX_MODEL" \
@@ -309,7 +319,7 @@ echo ""
 echo "=== Step 3/3: postprocess_variants ==="
 
 PP_CPUS="${POSTPROCESS_CPUS:-$NUM_SHARDS}"
-CV_MERGED="${INTERMEDIATE_RESULTS_DIR}/call_variants_output@${NUM_CV_WORKERS}.tfrecord.gz"
+CV_MERGED="${INTERMEDIATE_RESULTS_DIR}/call_variants_output@${NUM_CV_WORKERS}.tfrecord${GZ_EXT}"
 
 PP_CMD=("/opt/deepvariant/bin/postprocess_variants"
   "--ref=$REF"

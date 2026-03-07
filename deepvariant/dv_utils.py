@@ -193,8 +193,9 @@ def get_one_example_from_examples_path(source, proto=None):
     raise ValueError(
         'Cannot find matching files with the pattern "{}"'.format(source)
     )
+  compression = 'GZIP' if any(f.endswith('.gz') for f in files) else ''
   dataset = tf.data.TFRecordDataset(
-      files, compression_type='GZIP', num_parallel_reads=tf.data.AUTOTUNE
+      files, compression_type=compression, num_parallel_reads=tf.data.AUTOTUNE
   )
   if not proto:
     proto = example_pb2.Example
@@ -338,8 +339,10 @@ def get_shape_and_channels_from_json(example_info_json):
   return example_shape, example_channels_enum, channel_indices
 
 
-def get_tf_record_writer(output_filename: str) -> tf.io.TFRecordWriter:
-  tf_options = tf.io.TFRecordOptions(compression_type='GZIP')
+def get_tf_record_writer(
+    output_filename: str, compression_type: str = 'GZIP'
+) -> tf.io.TFRecordWriter:
+  tf_options = tf.io.TFRecordOptions(compression_type=compression_type)
   return tf.io.TFRecordWriter(output_filename, options=tf_options)
 
 

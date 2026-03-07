@@ -1422,12 +1422,16 @@ def get_cvo_paths(cvo_file_spec: str) -> list[str]:
     paths = sharded_file_utils.maybe_generate_sharded_filenames(cvo_file_spec)
   else:
     # Input is expected to be dynamically sharded.
-    filename_resolver = cvo_file_spec.replace('.tfrecord.gz', '*')
+    if '.tfrecord.gz' in cvo_file_spec:
+      tfrecord_ext = '.tfrecord.gz'
+    else:
+      tfrecord_ext = '.tfrecord'
+    filename_resolver = cvo_file_spec.replace(tfrecord_ext, '*')
     all_files = sharded_file_utils.glob_list_sharded_file_patterns(
         filename_resolver
     )
     filename_pattern = cvo_file_spec.replace(
-        '.tfrecord.gz', '@' + str(len(all_files)) + '.tfrecord.gz'
+        tfrecord_ext, '@' + str(len(all_files)) + tfrecord_ext
     )
     paths = sharded_file_utils.maybe_generate_sharded_filenames(
         filename_pattern

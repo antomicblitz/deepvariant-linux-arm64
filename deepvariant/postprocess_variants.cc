@@ -43,6 +43,7 @@
 #include "third_party/nucleus/protos/reference.pb.h"
 #include "third_party/nucleus/protos/variants.pb.h"
 #include "third_party/nucleus/util/utils.h"
+#include "absl/strings/match.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/compression.h"
 #include "tensorflow/core/lib/io/record_reader.h"
@@ -84,7 +85,8 @@ std::uint64_t ProcessSingleSiteCallTfRecords(
   for (const string& tfrecord_path : tfrecord_paths) {
     std::unique_ptr<tensorflow::RandomAccessFile> read_file;
     TF_CHECK_OK(env->NewRandomAccessFile(tfrecord_path, &read_file));
-    const char* const option = tensorflow::io::compression::kGzip;
+    const char* const option = absl::EndsWith(tfrecord_path, ".gz")
+        ? tensorflow::io::compression::kGzip : "";
     tensorflow::io::RecordReader reader(
         read_file.get(),
         tensorflow::io::RecordReaderOptions::CreateRecordReaderOptions(option));
