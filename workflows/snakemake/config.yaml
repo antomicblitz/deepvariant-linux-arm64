@@ -20,4 +20,4 @@ outdir: results
 batch_size: 256
 num_shards: 16                        # 0 = use all available cores
 memory: 28g                           # Docker memory limit
-image: "ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.5"
+image: "ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.6"
