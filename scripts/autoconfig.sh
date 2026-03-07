@@ -95,11 +95,15 @@ case "${CPU_FAMILY}" in
     NOTES+=("See docs/onednn-ampereone.md for full diagnostic trail.")
     ;;
   neoverse-v1-graviton3|neoverse-v2-graviton4)
-    if [[ "${HAS_BF16}" == "true" ]]; then
+    if [[ "${HAS_BF16}" == "true" && "${RAM_GB}" -ge 48 ]]; then
       BACKEND="tf_bf16"
       TF_ONEDNN="1"
       FPMATH="BF16"
       NOTES+=("Graviton3/4: BF16 BFMMLA active via OneDNN.")
+    elif [[ "${HAS_BF16}" == "true" && "${RAM_GB}" -lt 48 ]]; then
+      BACKEND="onnx_int8"
+      TF_ONEDNN="0"
+      WARNINGS+=("BF16 available but only ${RAM_GB} GB RAM. TF SavedModel needs >=48 GB (26 GB RSS + postprocess fork). Using INT8 ONNX (~3 GB RSS).")
     else
       BACKEND="onnx_int8"
       TF_ONEDNN="0"

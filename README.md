@@ -289,7 +289,7 @@ docker pull ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.5
 
 | Platform | Key setting | Why |
 |----------|------------|-----|
-| **Graviton3/4** (c7g, c8g) | Autoconfig enables BF16 + OneDNN | Has BF16 BFMMLA — 38% faster CV |
+| **Graviton3/4** (c7g, c8g) | Autoconfig enables BF16 + OneDNN (>=48 GB RAM) | BF16 BFMMLA — 38% faster CV. <48 GB falls back to INT8 ONNX (TF OOMs) |
 | **Oracle A1** (Altra, Neoverse-N1) | Autoconfig selects INT8 ONNX, disables OneDNN | OneDNN+ACL adds 29% ME overhead on N1 without BF16 |
 | **Oracle A2** (AmpereOne) | Autoconfig blocks OneDNN (SIGILL), selects INT8 ONNX | ACL compiled for N1 crashes on AmpereOne ISA — both ME and CV |
 | **Hetzner CAX** (shared Altra) | Same as Oracle A1 | Shared vCPU; ~5% throttling variance |

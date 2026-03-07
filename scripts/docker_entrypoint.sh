@@ -54,10 +54,22 @@ fi
 
 # --- ONNX INT8 auto-selection ---
 # On non-BF16 platforms, ONNX INT8 is 2.3x faster than FP32.
-# On BF16 platforms, TF+OneDNN BF16 is optimal — skip ONNX.
+# On BF16 platforms with enough RAM, TF+OneDNN BF16 is optimal.
+# TF SavedModel uses ~26 GB RSS; forking postprocess can push past 32 GB → OOM.
+# Fall back to ONNX INT8 (~3 GB RSS) on BF16 platforms with <48 GB available.
+_ram_gb=$(awk '/MemTotal/{printf "%d", $2/1024/1024}' /proc/meminfo 2>/dev/null || echo 0)
+
 if [[ -z "${DV_USE_ONNX+x}" ]]; then
-  if [[ "${_has_bf16}" == "true" && "${TF_ENABLE_ONEDNN_OPTS}" == "1" ]]; then
+  if [[ "${_has_bf16}" == "true" && "${TF_ENABLE_ONEDNN_OPTS}" == "1" && "${_ram_gb}" -ge 48 ]]; then
     export DV_USE_ONNX=0
+  elif [[ "${_has_bf16}" == "true" && "${TF_ENABLE_ONEDNN_OPTS}" == "1" && "${_ram_gb}" -lt 48 ]]; then
+    if [[ -f /opt/models/wgs/model_int8_static.onnx ]]; then
+      export DV_USE_ONNX=1
+      echo "deepvariant: BF16 available but only ${_ram_gb} GB RAM — using INT8 ONNX (TF BF16 needs >=48 GB)" >&2
+    else
+      export DV_USE_ONNX=0
+      echo "deepvariant: WARNING: BF16 with ${_ram_gb} GB RAM may OOM. Use --memory=48g+ or mount INT8 model." >&2
+    fi
   elif [[ -f /opt/models/wgs/model_int8_static.onnx ]]; then
     export DV_USE_ONNX=1
     echo "deepvariant: INT8 ONNX auto-selected (non-BF16 platform, 2.3x over FP32)" >&2
