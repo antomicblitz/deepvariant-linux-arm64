@@ -95,13 +95,17 @@ Graviton3 (c7g.8xlarge, 32 vCPU, BF16+jemalloc, chr20:10M-11M, 2878 examples):
 | Direct serial | 34.550s | 34.689s | 34.544s | **34.59s ± 0.08s** |
 | **Delta** | | | | **-0.06s (-0.2%, noise)** |
 
-Oracle A2 (AmpereOne, 32 vCPU, Eigen+jemalloc, chr20:10M-11M, 2878 examples):
+Oracle A2 (AmpereOne, 16 OCPU / 32 vCPU, Eigen, no jemalloc, chr20:10M-11M, 2878 examples):
 
 | Config | Run 1 | Run 2 | Run 3 | Mean ± σ |
 |--------|-------|-------|-------|----------|
-| Baseline (proto) | 42.749s | 44.092s | 44.626s | **43.82s ± 0.98s** |
-| Direct serial | 45.000s | 44.865s | 44.384s | **44.75s ± 0.33s** |
-| **Delta** | | | | **+0.93s (+2.1%, noise)** |
+| Baseline (proto) | 46.460s | 46.327s | 46.384s | **46.39s ± 0.07s** |
+| Direct serial | 46.293s | 46.296s | 46.295s | **46.29s ± 0.00s** |
+| **Delta** | | | | **-0.10s (-0.2%, noise)** |
+
+*Note: Earlier Oracle A2 results (43.82s baseline, 44.75s direct-serial) were
+invalid — concurrent Bazel compilation on the same instance caused CPU contention
+and high variance (σ=0.98s). Re-measured on a dedicated clean instance.*
 
 **Conclusion:** 0% measurable impact on both platforms. The `_message.so` 29-43%
 CPU share is dominated by protobuf operations OTHER than Example serialization
@@ -135,10 +139,10 @@ Measured on Oracle A2 (AmpereOne, 16 OCPU / 32 vCPU), `TF_ENABLE_ONEDNN_OPTS=0`,
 | **Mean** | **45.30s ± 0.02s** |
 
 **"After" results:** See Direct TFRecord Serialization benchmark above. Buffer
-reuse (df3e13d9) was included in both baseline and direct-serial images, so its
-isolated impact is measured as the difference between 45.30s (pre-df3e13d9,
-Oracle A2 without jemalloc) and 43.82s (post-df3e13d9, Oracle A2 with jemalloc).
-The combined effect of buffer reuse + jemalloc is -1.48s (-3.3%).
+reuse (df3e13d9) was included in both baseline and direct-serial images. The
+clean Oracle A2 benchmark (46.39s baseline, no jemalloc) vs the original 45.30s
+(also no jemalloc) shows minor variance from different instance hardware; buffer
+reuse in isolation has no measurable impact.
 
 ## How to Verify
 

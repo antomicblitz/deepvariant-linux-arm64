@@ -17,6 +17,7 @@ Version tags use the format `v{upstream}-arm64.{n}` (e.g., `v1.9.0-arm64.4`).
 | AWS Graviton3 | c7g.8xlarge | Neoverse V1 | 32 | 64 GB | $1.15 |
 | AWS Graviton4 | c8g.4xlarge | Neoverse V2 | 16 | 32 GB | $0.68 |
 | AWS Graviton4 | c8g.8xlarge | Neoverse V2 | 32 | 64 GB | $1.36 |
+| Oracle A1 | A1.Flex (16 OCPU) | Altra (Neoverse N1) | 16 | 32 GB | $0.16 |
 | Oracle A2 | A2.Flex (16 OCPU) | AmpereOne (Siryn) | 32 | 64 GB | $0.64 |
 | GCP | t2a-standard-16 | Neoverse N1 | 16 | 64 GB | — |
 
@@ -68,6 +69,10 @@ Oracle A2 pricing: $0.04/OCPU/hr — 16-vCPU rows use 8 OCPU ($0.32/hr),
 | **Oracle A2 (AmpereOne)** | **INT8 ONNX** | **off** | **253s** | **315s (0.389)** | **11s** | **584s** | **$0.32** | **$2.49** | **4** |
 | **Oracle A2 (AmpereOne)** | **INT8 ONNX** | **on** | **210s** | **318s (0.393)** | **12s** | **544s** | **$0.32** | **$2.32** | **4** |
 | Oracle A2 (AmpereOne) | TF Eigen FP32 | off | 287s | 325s (0.387) | 17s | **629s** | $0.32 | $2.69 | 2* |
+| **Oracle A1 (Altra/N1)** | **INT8 ONNX** | **off** | **245s** | **247s (0.309)** | **14s** | **509s** | **$0.16** | **$1.09** | **4** |
+| **Oracle A1 (Altra/N1)** | **INT8 ONNX** | **on** | **219s** | **250s (0.313)** | **14s** | **486s** | **$0.16** | **$1.04** | 3 |
+| Oracle A1 (Altra/N1) | TF Eigen FP32 | off | 247s | 470s (0.588) | 14s | **735s** | $0.16 | $1.57 | 1* |
+| Oracle A1 (Altra/N1) | ONNX FP32 | off | 240s | ~568s (0.711) | 14s | **828s** | $0.16 | $1.77 | 2* |
 
 ### Cross-Platform Comparison (32 vCPU, Sequential)
 
@@ -141,6 +146,9 @@ See README.md for usage instructions.
 | AWS Graviton4 | 16 | BF16 (standalone CV) | 0.328 s/100 | ~8m32s* |
 | **Oracle A2 (AmpereOne)** | **16 OCPU** | **INT8 ONNX** | **0.389 s/100** | **9m44s** |
 | Oracle A2 (AmpereOne) | 16 OCPU | TF Eigen FP32 | 0.387 s/100 | 10m29s |
+| **Oracle A1 (Altra/N1)** | **16 OCPU** | **INT8 ONNX** | **0.309 s/100** | **~8m29s** |
+| Oracle A1 (Altra/N1) | 16 OCPU | TF Eigen FP32 | 0.588 s/100 | 12m15s |
+| Oracle A1 (Altra/N1) | 16 OCPU | ONNX FP32 | 0.711 s/100 | 13m48s |
 
 ---
 
@@ -178,6 +186,7 @@ Measured via `scripts/benchmark_jemalloc_ablation.sh` with interleaved runs:
 
 - **Graviton3 (N=2):** ME -13.8%, CV +1.6% (noise), wall -9.0% (487->443s)
 - **Oracle A2 (N=4):** ME -17.0%, CV within noise, wall -6.9% (584->544s)
+- **Oracle A1 (N=3/4):** ME -10.6%, CV within noise, wall -4.5% (509->486s)
 
 ME improvement is the dominant factor. jemalloc's per-thread arenas reduce
 malloc contention in make_examples' C++ allocations. CV sees minimal benefit
@@ -191,8 +200,8 @@ because ONNX Runtime and TF have their own internal allocators.
 
 | Use Case | Platform | vCPU | Backend | Parallel CV | $/genome | Notes |
 |----------|----------|------|---------|-------------|----------|-------|
-| **Cheapest** | Oracle A2 (16 OCPU) | 32 | INT8 ONNX | 4-way | **~$2.14** | Projected from measured CV |
-| Cheapest (sequential) | Oracle A2 (16 OCPU) | 16 | INT8 ONNX+jemalloc | no | **$2.32** | 4-run verified |
+| **Cheapest** | Oracle A1 (16 OCPU) | 16 | INT8 ONNX+jemalloc | no | **$1.04** | 3-run, sigma=14s |
+| Cheapest (A2) | Oracle A2 (16 OCPU) | 32 | INT8 ONNX | 4-way | **~$2.14** | Projected from measured CV |
 | **Best speed/cost** | Graviton4 (c8g.8xlarge) | 32 | BF16+jemalloc | 4-way | **~$3.13** | Projected; fastest wall ~172s |
 | **Fastest ARM64** | Graviton4 (c8g.8xlarge) | 32 | BF16+jemalloc | 4-way | **~$3.13** | CV=61s (N=3, σ=0) |
 | Fastest (sequential) | Graviton4 (c8g.8xlarge) | 32 | BF16+jemalloc | no | **$4.22** | 232s wall, 2-run* |
@@ -201,6 +210,10 @@ because ONNX Runtime and TF have their own internal allocators.
 
 ### Platform Notes
 
+- **Oracle A1 (Altra/N1):** The cheapest option at **$1.04/genome**. No BF16 or i8mm —
+  use INT8 ONNX with jemalloc. OneDNN+ACL should work (N1 is the target ISA) but
+  was not tested. Higher run-to-run variance than other platforms (sigma=14s vs <1s
+  on Graviton3); use N >= 6 runs for tight benchmarks. See `docs/oracle-a1-benchmark.md`.
 - **Graviton3/4:** Use BF16 when BF16 CPU flag is present (`grep bf16 /proc/cpuinfo`).
   INT8 ONNX is the fallback for non-BF16 platforms. Both achieve similar CV rates
   on Graviton3 (0.232 vs 0.237 s/100).
@@ -237,7 +250,7 @@ because ONNX Runtime and TF have their own internal allocators.
 | Full pipeline with 4-way parallel CV | Integration script | Projected: Oracle A2 ~$2.14, Graviton4 ~$3.13 |
 | AmpereOne BF16 via generic TF wheel | SVE hypothesis test | Could reach ~$1.55/genome if BF16 unlocked |
 | AmpereOne Docker rebuild (OneDNN for Siryn) | Build infrastructure | Full BF16 fast math, target <$2/genome |
-| Oracle A1 (Altra) benchmark | Instance capacity | Ultra-cheap ($0.01/OCPU/hr) |
+| ~~Oracle A1 (Altra) benchmark~~ | **DONE** | **$1.04/genome — new cost leader** |
 | 8-way parallel CV | Diminishing returns test | Memory bandwidth may saturate at 8 workers |
 
 See `docs/oracle-a2-wheel-test.md` for the AmpereOne SIGILL investigation

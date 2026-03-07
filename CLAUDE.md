@@ -34,8 +34,8 @@ This project ports DeepVariant to Linux ARM64 with hardware-accelerated inferenc
 
 **Platform compatibility notes:**
 - **Graviton4 (c8g):** TF+OneDNN BF16 works but requires 64+ GB RAM (TF SavedModel uses ~26 GB RSS; OOM-killed on 32 GB machines when forking postprocess). Use ONNX backend on 32 GB instances.
-- **Oracle A2 (AmpereOne/Siryn):** OneDNN+ACL (compiled for Neoverse-N1) triggers SIGILL on AmpereOne in both make_examples and call_variants. ISA cap also fails under high concurrency. Must use `TF_ENABLE_ONEDNN_OPTS=0` (Eigen fallback) for all binaries. Use INT8 ONNX for call_variants ($2.32/genome). BF16 requires TF source rebuild with `-mcpu=ampere1`. See `docs/onednn-ampereone.md`.
-- **Oracle A1 (Altra):** Persistent "Out of host capacity" in Frankfurt free tier. Not yet benchmarked.
+- **Oracle A2 (AmpereOne/Siryn):** OneDNN+ACL (compiled for Neoverse-N1) triggers SIGILL on AmpereOne in both make_examples and call_variants. ISA cap also fails under high concurrency. Must use `TF_ENABLE_ONEDNN_OPTS=0` (Eigen fallback) for all binaries. Use INT8 ONNX for call_variants ($2.32/genome). BF16 permanently blocked — TF source rebuild with ACL v23.08 patches fixed 2 of 4 cascading bugs but Conv2D still falls to unaccelerated `gemm:ref` and Grappler remapping crashes inner_product. See `docs/onednn-ampereone.md`.
+- **Oracle A1 (Altra/N1):** **Benchmarked — $1.04/genome (new cost leader).** INT8 ONNX + jemalloc, 486s chr20 at $0.16/hr (16 OCPU). 55% cheaper than A2. No BF16/i8mm — INT8 uses NEON GEMM. Higher run-to-run variance (sigma=14s). Capacity-limited in some regions. See `docs/oracle-a1-benchmark.md`.
 
 ***
 
@@ -307,7 +307,15 @@ INT8 matches or exceeds BF16 in all tested stratification regions. No localized 
    - **Cost winner:** Oracle A2 at **$2.32/genome** (INT8 ONNX) is the cheapest tested platform. At $0.32/hr for 16 OCPUs, the low hourly rate dominates.
    - **BF16 blocked:** Requires TF source rebuild with `-mcpu=ampere1` to recompile ACL for AmpereOne ISA. Projected ~$1.44/genome with BF16.
 
-4. **Oracle A1 INT8 benchmark (DEPRIORITIZED)** — Persistent "Out of host capacity" for A1 instances in Frankfurt. Oracle A2 benchmarks complete and cheaper ($2.14-2.32/genome); A1 would only be relevant for ultra-low-cost scenarios.
+4. **Oracle A1 (Altra/N1) benchmark (DONE)** — Benchmarked on VM.Standard.A1.Flex (16 OCPU = 16 vCPU, 32 GB, $0.16/hr). New cost leader.
+   - **INT8 ONNX jemalloc OFF (4-run avg):** ME 245s, CV 247s (0.309 s/100), PP 14s, wall **509s**. Cost: **$1.09/genome**.
+   - **INT8 ONNX jemalloc ON (3-run avg):** ME 219s, CV 250s (0.313 s/100), PP 14s, wall **486s**. Cost: **$1.04/genome**.
+   - **TF Eigen FP32 (1 run):** ME 247s, CV 470s (0.588 s/100), PP 14s, wall **735s**. Cost: $1.57/genome.
+   - **ONNX FP32 (2-run avg):** ME 240s, CV ~569s (0.711 s/100), PP 14s, wall **828s**. Cost: $1.77/genome.
+   - **A1 vs A2:** A1 is **55% cheaper** ($1.04 vs $2.32/genome) AND 11% faster (486s vs 544s). A1's INT8 CV rate is 21% faster than A2 (0.309 vs 0.389 s/100) — N1 NEON GEMM is well-optimized (primary ACL target). A1 costs 2x less per OCPU ($0.01 vs $0.04).
+   - **Variance:** Higher than other platforms (sigma=14s). Two of 7 INT8 runs hit slow CV (267s vs ~240s). Recommend N>=6 for future A1 benchmarks.
+   - **jemalloc benefit:** ME -10.6%, CV ~0%, wall -4.5%. Smaller than A2 (-6.9%) or Graviton3 (-9.0%), consistent with N1's lower malloc contention.
+   - See `docs/oracle-a1-benchmark.md` for full results.
 
 5. **Stratified region validation (DONE)** — INT8 passes all GIAB stratification regions. Production caveat cleared. See section 2.2c above.
 
@@ -401,7 +409,7 @@ Oracle A2's sequential CV (283s at 32 ORT threads) wastes 16 threads' worth of G
 **Investigated and rejected:**
 - **Protobuf arena allocation:** Tested `Arena::CreateMessage<tensorflow::Example>(arena)` — 0% impact on Linux ARM64 (wall -0.2%, cache misses -0.5%, both within noise). Reverted. The `_message.so` share is dominated by varint serialization and proto field access, not allocation. See `docs/protobuf-serialization-notes.md` for full benchmark data.
 - **SerializeToArray swap:** `SerializeToString` already does single allocation internally. Switching to `SerializeToArray` saves one `resize()` call = 0.008% of runtime.
-- **Direct TFRecord serialization:** Implemented (ee9a910d). Bypasses `tensorflow::Example` proto entirely — writes protobuf wire format bytes directly via `CodedOutputStream`. Eliminates one ~154KB image copy per example. Benchmarked on both Graviton3 (34.59s vs 34.65s, -0.2%) and Oracle A2 (44.75s vs 43.82s, +2.1% noise). **0% measurable impact** — the ~20µs/example savings from one memcpy is far below the noise floor. The `_message.so` share is dominated by Read/Variant proto operations and pybind11 boundary crossings, not Example serialization.
+- **Direct TFRecord serialization:** Implemented (ee9a910d). Bypasses `tensorflow::Example` proto entirely — writes protobuf wire format bytes directly via `CodedOutputStream`. Eliminates one ~154KB image copy per example. Benchmarked on both Graviton3 (34.59s vs 34.65s, -0.2%) and Oracle A2 (46.29s vs 46.39s, -0.2%). **0% measurable impact** — the ~20µs/example savings from one memcpy is far below the noise floor. The `_message.so` share is dominated by Read/Variant proto operations and pybind11 boundary crossings, not Example serialization.
 
 **Changes retained (code is cleaner):**
 1. **`std::ostringstream` → `absl::StrCat`** (make_examples_native.cc): Variant range string formatting.
@@ -413,7 +421,7 @@ Oracle A2's sequential CV (283s at 32 ORT threads) wastes 16 threads' worth of G
 | Platform | Baseline (proto) | Direct serial | Delta |
 |----------|-----------------|---------------|-------|
 | Graviton3 (BF16+jemalloc) | 34.65s ± 0.08s | 34.59s ± 0.08s | -0.2% (noise) |
-| Oracle A2 (Eigen+jemalloc) | 43.82s ± 0.98s | 44.75s ± 0.33s | +2.1% (noise) |
+| Oracle A2 (Eigen, no jemalloc) | 46.39s ± 0.07s | 46.29s ± 0.00s | -0.2% (noise) |
 
 **Conclusion:** The EncodeExample serialization path is fully optimized. The protobuf bottleneck in `_message.so` is NOT in Example creation — it's in Read/Variant proto field access and pybind11 boundary crossings across the entire make_examples pipeline. No further optimization is possible without architectural changes (moving proto access into C++).
 
@@ -438,7 +446,8 @@ Oracle A2's sequential CV (283s at 32 ORT threads) wastes 16 threads' worth of G
 | INT8 static quantization (ONNX) | **2.3x over ONNX FP32** | **DONE** | 0.225s/100 — matches BF16, no additional gain on Graviton3 |
 | OMP env scoping (per-subprocess) | ME: 307→299s (2.6%), total 516→507s | **DONE** | 3-run avg; remaining 21s gap vs BF16 ME is baseline variance |
 | Graviton4 INT8 ONNX (Neoverse V2) | **28% faster total** vs Graviton3 INT8 | **DONE** | 366s (0.197s/100), ME 194s — ~$3.33/genome |
-| Oracle A2 INT8 ONNX (AmpereOne) | **$2.32/genome** (cheapest) | **DONE** | 542s (0.358s/100); OneDNN SIGILL, needs Docker rebuild |
+| Oracle A2 INT8 ONNX (AmpereOne) | **$2.32/genome** | **DONE** | 542s (0.358s/100); OneDNN SIGILL, needs Docker rebuild |
+| **Oracle A1 INT8 ONNX (Altra/N1)** | **$1.04/genome** (new cost leader) | **DONE** | 486s (0.309 s/100 CV), jemalloc ON. 55% cheaper than A2. See `docs/oracle-a1-benchmark.md` |
 | fast_pipeline at 16 vCPU | **42% SLOWER** (CPU contention) | **DONE** | 693s vs 487s sequential — needs 32+ vCPU |
 | Oracle A2 32-vCPU sequential 32 shards | **489s** (10% faster than 16 vCPU) | **DONE** | ME scales (167s), CV doesn't scale beyond 16 threads |
 | Oracle A2 32-vCPU fast_pipeline | **<1% improvement, PP broken** | **DONE** | 483s wall, PP fails on CVO ordering — not worth pursuing |
@@ -447,7 +456,7 @@ Oracle A2's sequential CV (283s at 32 ORT threads) wastes 16 threads' worth of G
 | jemalloc (`DV_USE_JEMALLOC=1`) | **ME -14-17%, CV ~0%, Wall -7-9%** | **VERIFIED** | Graviton3: 487→443s (2 runs). Oracle A2: 584→544s (4 runs). Universal ARM64 benefit. |
 | **Parallel call_variants (4-way)** | **CV 2.0-2.5x faster** | **DONE** | Graviton4: CV 128→61s (2.10x). Graviton3: CV 141→74s (1.90x). Oracle A2: CV 283→114s (2.47x). |
 | ONNX inter-op parallelism | **No improvement** | **DONE** | intra-op GEMM dominates; inter-op hurts |
-| EncodeExample: StrCat + buffer reuse + direct serial | **0%** | **CLOSED** | G3: 34.59 vs 34.65s (-0.2%); A2: 44.75 vs 43.82s (+2.1% noise). See `docs/protobuf-serialization-notes.md` |
+| EncodeExample: StrCat + buffer reuse + direct serial | **0%** | **CLOSED** | G3: 34.59 vs 34.65s (-0.2%); A2: 46.29 vs 46.39s (-0.2%). See `docs/protobuf-serialization-notes.md` |
 | Protobuf arena allocation (tf::Example) | **0%** | **CLOSED** | Tested and reverted. Wall -0.2%, cache -0.5% (noise). See `docs/protobuf-serialization-notes.md` |
 | KMP_AFFINITY + system allocator | **30% REGRESSION** | **REVERTED** | Do not re-attempt |
 | ~~EfficientNet-B3~~ | **3x SLOWER** | **DEAD END** | Depthwise separable conv penalty |
@@ -583,12 +592,12 @@ These optimizations were investigated on macOS and found to have zero impact. Th
 | **ONNX dynamic INT8 quantization** | **Broken on ARM64** | `ConvInteger(10)` op not implemented in CPUExecutionProvider — use static INT8 (QDQ format) instead |
 | **INT8 on Graviton3+ (vs BF16)** | **No additional gain** | INT8 ONNX static = 0.225s/100, TF+OneDNN BF16 = 0.232s/100 — essentially same speed |
 | **TF SavedModel on 32 GB machines** | **OOM kill** | TF allocates ~26 GB RSS for InceptionV3; forking postprocess pushes >32 GB → OOM. Use ONNX backend or 64+ GB instances |
-| **OneDNN+ACL on AmpereOne (Siryn)** | **SIGILL** | ACL compiled for Neoverse-N1 triggers SIGILL on AmpereOne in both ME and CV. ISA cap also fails at 16-way concurrency. Use `TF_ENABLE_ONEDNN_OPTS=0`. BF16 requires TF source rebuild. See `docs/onednn-ampereone.md` |
+| **OneDNN+ACL on AmpereOne (Siryn)** | **SIGILL** | ACL compiled for Neoverse-N1 triggers SIGILL on AmpereOne in both ME and CV. ISA cap also fails at 16-way concurrency. Use `TF_ENABLE_ONEDNN_OPTS=0`. BF16 source rebuild attempted: fixed 2 bugs (SVE filter, indirect_gemm null ptr) but uncovered 2 more (Conv2D falls to gemm:ref, Grappler remapping crash). BF16 permanently blocked — 4 cascading ACL/OneDNN bugs. See `docs/onednn-ampereone.md` |
 | **ONNX on AmpereOne** | **1.96x slower than TF Eigen** | ONNX CPUExecutionProvider much worse than TF Eigen on AmpereOne (0.759 vs 0.387 s/100) — use INT8 ONNX for CV only |
 | **fast_pipeline on Oracle A2 32-vCPU** | **<1% improvement, PP broken** | CV stalls on streaming, PP fails on CVO ordering. Sequential 32 shards (489s) is better than fast_pipeline (483s wall, no VCF) |
 | **INT8 ONNX CV scaling beyond 16 threads** | **No improvement** | 0.358 s/100 at 16 threads, 0.384 s/100 at 32 threads with 16 shards. ORT GEMM parallelism saturates at ~16 threads |
 | **ONNX inter-op parallelism (inter_op_threads > 1)** | **No improvement** | Tested intra/inter splits (28/2, 24/4, 20/6, 16/8, 16/16). All equal or worse than 32/1 baseline. InceptionV3 branches don't benefit from inter-op threading |
-| **Direct TFRecord serialization (bypass tf::Example)** | **0%** | Writes protobuf wire format directly via CodedOutputStream. Eliminates one 154KB image copy per example. G3: -0.2%, A2: +2.1% (both noise). The `_message.so` bottleneck is Read/Variant proto ops, not Example serialization |
+| **Direct TFRecord serialization (bypass tf::Example)** | **0%** | Writes protobuf wire format directly via CodedOutputStream. Eliminates one 154KB image copy per example. G3: -0.2%, A2: -0.2% (both noise). The `_message.so` bottleneck is Read/Variant proto ops, not Example serialization |
 
 ### What DOES Matter (Profile First)
 
@@ -783,7 +792,7 @@ Apple Silicon's unified memory makes CPU→GPU data transfer free. On Linux ARM6
 - [x] Graviton3/4 32 vCPU benchmarks: c7g.8xlarge 283s, c8g.8xlarge 232s. CV floor confirmed.
 - [x] **Parallel call_variants (4-way):** CV 2.0-2.5x speedup on all 3 platforms. Graviton4 61s (N=3), Graviton3 74s (N=4), Oracle A2 114s (N=2). Variant counts match exactly. See `scripts/benchmark_parallel_cv.sh`.
 - [ ] Graviton4 BF16 full pipeline on c8g.8xlarge (64 GB) — TF OOM on 32 GB
-- [ ] Oracle A2 ACL rebuild for AmpereOne BF16 (~$1.44/genome target)
+- [x] ~~Oracle A2 ACL rebuild for AmpereOne BF16~~ — **BLOCKED**: 4 cascading ACL/OneDNN bugs. See `docs/onednn-ampereone.md`
 
 ### v0.3.0 — GPU/NPU Acceleration (Future, Optional)
 - [ ] Jetson Orin CUDA path working
@@ -793,7 +802,7 @@ Apple Silicon's unified memory makes CPU→GPU data transfer free. On Linux ARM6
 ### v1.0.0 — Production Release
 - [ ] Upstream PR to google/deepvariant with ARM64 support
 - [ ] Multi-arch Docker image (amd64 + arm64)
-- [x] Published benchmark results on Graviton3, Graviton4, Oracle A2
+- [x] Published benchmark results on Graviton3, Graviton4, Oracle A1, Oracle A2
 - [x] Stratified GIAB validation on all backends (INT8, BF16, FP32)
 - [x] Documentation and quickstart guide
 
@@ -814,6 +823,10 @@ Apple Silicon's unified memory makes CPU→GPU data transfer free. On Linux ARM6
 | **Oracle A2 TF Eigen FP32** | 16 vCPU (8 OCPU) | $0.32 | 10m29s | ~8.4 hr | **$2.69** | Measured (2-run avg 629s, Eigen: OneDNN SIGILL)* |
 | **Graviton3 BF16 + jemalloc** | 16 | $0.58 | 7m23s | ~5.9 hr | **$3.43** | Measured (2-run avg 443s, jemalloc ON)* |
 | **Oracle A2 INT8 + jemalloc** | 16 vCPU (8 OCPU) | $0.32 | 9m04s | ~7.3 hr | **$2.32** | Measured (4-run avg 544s, OneDNN OFF) |
+| **Oracle A1 INT8 ONNX** | 16 (16 OCPU) | $0.16 | 8m29s | ~6.8 hr | **$1.09** | Measured (4-run avg 509s, OneDNN OFF) |
+| **Oracle A1 INT8 + jemalloc** | 16 (16 OCPU) | $0.16 | 8m06s | ~6.5 hr | **$1.04** | Measured (3-run avg 486s, OneDNN OFF) |
+| **Oracle A1 TF Eigen FP32** | 16 (16 OCPU) | $0.16 | 12m15s | ~9.8 hr | **$1.57** | Measured (1 run 735s, OneDNN OFF)* |
+| **Oracle A1 ONNX FP32** | 16 (16 OCPU) | $0.16 | 13m48s | ~11.1 hr | **$1.77** | Measured (2-run avg 828s)* |
 | **Graviton3 BF16+jemalloc 32 shards** | 32 | $1.15 | 4m43s | ~3.8 hr | **$4.35** | Measured (2-run avg 283s, c7g.8xlarge)* |
 | **Graviton4 BF16+jemalloc 32 shards** | 32 | $1.36 | 3m52s | ~3.1 hr | **$4.22** | Measured (2-run avg 232s, c8g.8xlarge)* |
 | **Graviton4 INT8+jemalloc 32 shards** | 32 | $1.36 | 3m53s | ~3.1 hr | **$4.24** | Measured (2-run avg 233s, c8g.8xlarge)* |
@@ -823,7 +836,7 @@ Apple Silicon's unified memory makes CPU→GPU data transfer free. On Linux ARM6
 | **Oracle A2 4-way parallel CV** | 32 (16 OCPU) | $0.64 | ~4m10s | ~3.3 hr | **~$2.14** | Projected (ME=113+CV=114+PP=10=~250s) |
 | Graviton3 fast_pipeline BF16 16 vCPU | 16 | $0.58 | 11m33s | ~9.3 hr | $5.37 | Measured (2-run avg 693s)* — **42% SLOWER** |
 
-*All $/genome use formula: `chr20_wall_s × 48.1 / 3600 × $/hr`. Oracle A2 pricing: $0.04/OCPU/hr — 16-vCPU rows priced at 8 OCPU ($0.32/hr), 32-vCPU rows at 16 OCPU ($0.64/hr). Measured values averaged over N runs (N noted in Source column). Rows marked with \* have N<4 runs (wider confidence interval). Projected values marked with ~. WGS time extrapolation has ~15-20% uncertainty. Wall time includes ~4-5s Docker startup/inter-stage overhead beyond ME+CV+PP sum. INT8 matches BF16 speed on Graviton3 (no additional gain); INT8 is for non-BF16 platforms. fast_pipeline at 16 vCPU is slower due to CPU contention — needs 32+ vCPU.*
+*All $/genome use formula: `chr20_wall_s × 48.1 / 3600 × $/hr`. Oracle A1 pricing: $0.01/OCPU/hr — 16 OCPU = $0.16/hr. Oracle A2 pricing: $0.04/OCPU/hr — 16-vCPU rows priced at 8 OCPU ($0.32/hr), 32-vCPU rows at 16 OCPU ($0.64/hr). Measured values averaged over N runs (N noted in Source column). Rows marked with \* have N<4 runs (wider confidence interval). Projected values marked with ~. WGS time extrapolation has ~15-20% uncertainty. Wall time includes ~4-5s Docker startup/inter-stage overhead beyond ME+CV+PP sum. INT8 matches BF16 speed on Graviton3 (no additional gain); INT8 is for non-BF16 platforms. fast_pipeline at 16 vCPU is slower due to CPU contention — needs 32+ vCPU.*
 
 *Graviton4 BF16 full pipeline OOM-killed on 32 GB (c8g.4xlarge). TF SavedModel uses ~26 GB RSS; forking postprocess pushes total >32 GB. Standalone CV rate measured at 0.328 s/100 (BF16). ME time (232s) taken from ONNX run. Needs c8g.8xlarge (64 GB) for full TF BF16 pipeline.*
 
