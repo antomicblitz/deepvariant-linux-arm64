@@ -22,22 +22,17 @@ At [UK Biobank](https://doi.org/10.1038/s41586-025-09272-9) scale (490,640 genom
 ```bash
 docker pull ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.5
 
-# DV_AUTOCONFIG=1 detects your CPU and selects the optimal backend automatically.
-# Parallel CV auto-scales workers to your CPU and RAM for 1.7-2.5x speedup.
 docker run \
   -v /path/to/data:/data \
-  -e DV_AUTOCONFIG=1 \
-  -e DV_USE_JEMALLOC=1 \
   ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.5 \
   /opt/deepvariant/scripts/run_parallel_cv.sh \
   --model_type=WGS \
   --ref=/data/reference.fasta \
   --reads=/data/input.bam \
-  --output_vcf=/data/output.vcf.gz \
-  --num_shards=$(nproc)
+  --output_vcf=/data/output.vcf.gz
 ```
 
-`DV_AUTOCONFIG=1` detects Graviton3/4, AmpereOne, and Neoverse-N1/N2, and applies the right backend, thread counts, and safety settings. User-provided env vars always take precedence. On non-BF16 platforms (Oracle A1, A2, Hetzner CAX), autoconfig automatically uses the **pre-installed INT8 ONNX model** (`/opt/models/wgs/model_int8_static.onnx`, 21 MB) — no manual quantization needed. `--num_cv_workers` auto-scales to your CPU count (~8 threads per worker).
+The script auto-detects your CPU (Graviton3/4, AmpereOne, Neoverse-N1/N2), enables jemalloc, selects the right backend (BF16 or INT8 ONNX), and scales parallel CV workers to your CPU and RAM. No env vars needed — just `docker run`. On non-BF16 platforms (Oracle A1, A2, Hetzner CAX), it uses the **pre-installed INT8 ONNX model** (`/opt/models/wgs/model_int8_static.onnx`, 21 MB). User-provided env vars (e.g., `TF_ENABLE_ONEDNN_OPTS`) always take precedence.
 
 <details>
 <summary>Manual backend override (BF16 or custom INT8)</summary>
@@ -114,7 +109,7 @@ docker run -v /path/to/data:/data --memory=28g \
 | `--ref` | Yes | -- | Reference FASTA |
 | `--reads` | Yes | -- | Input BAM/CRAM |
 | `--output_vcf` | Yes | -- | Output VCF |
-| `--num_shards` | Yes | -- | make_examples shards |
+| `--num_shards` | No | nproc | make_examples shards |
 | `--num_cv_workers` | No | auto (nproc/8) | Parallel CV workers |
 | `--regions` | No | -- | Genomic region (e.g., chr20) |
 | `--batch_size` | No | 256 | CV batch size |

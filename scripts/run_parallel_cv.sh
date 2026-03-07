@@ -6,14 +6,12 @@
 #
 # Runs INSIDE the Docker container (not on the host). Use it as:
 #
-#   docker run ... ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.4 \
+#   docker run -v /data:/data ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.5 \
 #     /opt/deepvariant/scripts/run_parallel_cv.sh \
 #     --model_type=WGS \
 #     --ref=/data/reference.fasta \
 #     --reads=/data/input.bam \
-#     --output_vcf=/data/output.vcf.gz \
-#     --num_shards=32 \
-#     --num_cv_workers=4
+#     --output_vcf=/data/output.vcf.gz
 #
 # Requirements:
 #   - ONNX backend only (TF SavedModel uses ~26 GB per process — would OOM)
@@ -48,7 +46,7 @@ CUSTOMIZED_MODEL=""
 SAMPLE_NAME=""
 OUTPUT_GVCF=""
 POSTPROCESS_CPUS=""
-NOCOMPRESS=false
+NOCOMPRESS=true
 
 print_usage() {
   echo "Usage: run_parallel_cv.sh [options]"
@@ -58,9 +56,9 @@ print_usage() {
   echo "  --ref=PATH               Reference FASTA"
   echo "  --reads=PATH             Input BAM/CRAM"
   echo "  --output_vcf=PATH        Output VCF"
-  echo "  --num_shards=N           Number of make_examples shards"
   echo ""
   echo "Optional:"
+  echo "  --num_shards=N           ME shards (default: nproc)"
   echo "  --num_cv_workers=N       Parallel CV workers (default: auto — nproc/8, min 1)"
   echo "  --regions=REGION         Genomic region (e.g., chr20)"
   echo "  --intermediate_results_dir=PATH"
@@ -70,7 +68,7 @@ print_usage() {
   echo "  --sample_name=NAME       Sample name for VCF header"
   echo "  --output_gvcf=PATH       Output gVCF (optional)"
   echo "  --postprocess_cpus=N     CPUs for postprocess (default: num_shards)"
-  echo "  --nocompress             Write uncompressed TFRecords (saves ~8% ME CPU)"
+  echo "  --compress               Compress TFRecords with gzip (default: off)"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -90,6 +88,7 @@ while [[ $# -gt 0 ]]; do
     --output_gvcf=*) OUTPUT_GVCF="${1#*=}" ;;
     --postprocess_cpus=*) POSTPROCESS_CPUS="${1#*=}" ;;
     --nocompress) NOCOMPRESS=true ;;
+    --compress) NOCOMPRESS=false ;;
     --help|-h) print_usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; print_usage; exit 1 ;;
   esac
@@ -97,13 +96,76 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Validate required args
-for var_name in MODEL_TYPE REF READS OUTPUT_VCF NUM_SHARDS; do
+for var_name in MODEL_TYPE REF READS OUTPUT_VCF; do
   if [[ -z "${!var_name}" ]]; then
     echo "ERROR: --$(echo "$var_name" | tr 'A-Z' 'a-z') is required." >&2
     print_usage
     exit 1
   fi
 done
+
+# Validate input files exist before spending minutes on make_examples
+if [[ ! -f "$REF" ]]; then
+  echo "ERROR: Reference file not found: $REF" >&2
+  exit 1
+fi
+if [[ ! -f "$READS" ]]; then
+  echo "ERROR: Reads file not found: $READS" >&2
+  exit 1
+fi
+
+# Default num_shards to nproc
+if [[ -z "$NUM_SHARDS" ]]; then
+  NUM_SHARDS=$(nproc)
+fi
+
+# ============================================================
+# CPU autoconfig + jemalloc (enabled by default, override with env vars)
+# ============================================================
+# Lightweight inline version of autoconfig.sh. Detects CPU family from
+# /proc/cpuinfo implementer+part, enables jemalloc and sets OneDNN/BF16.
+# User-provided env vars always take precedence.
+
+_implementer=""
+_part=""
+if [[ -f /proc/cpuinfo ]]; then
+  _implementer=$(grep -m1 "CPU implementer" /proc/cpuinfo 2>/dev/null | awk '{print $NF}' || true)
+  _part=$(grep -m1 "CPU part" /proc/cpuinfo 2>/dev/null | awk '{print $NF}' || true)
+fi
+_has_bf16=false
+[[ -f /proc/cpuinfo ]] && grep -qw "bf16" /proc/cpuinfo 2>/dev/null && _has_bf16=true
+
+_cpu_family="unknown"
+case "${_implementer}/${_part}" in
+  0x41/0xd0c) _cpu_family="neoverse-n1" ;;
+  0x41/0xd40) _cpu_family="neoverse-v1" ;;
+  0x41/0xd4f) _cpu_family="neoverse-v2" ;;
+  0x41/0xd49) _cpu_family="neoverse-n2" ;;
+  0xc0/0xac3) _cpu_family="ampereone" ;;
+esac
+
+# OneDNN: only beneficial with BF16 BFMMLA. Without BF16, ACL FP32 adds 29% ME overhead.
+# AmpereOne: ACL triggers SIGILL — must be OFF regardless.
+# Always override — Docker entrypoint may have set OneDNN=1 unconditionally.
+if [[ "$_has_bf16" == "true" && "$_cpu_family" != "ampereone" ]]; then
+  export TF_ENABLE_ONEDNN_OPTS=1
+else
+  export TF_ENABLE_ONEDNN_OPTS=0
+fi
+
+# BF16 fast math on Graviton3+ (only when OneDNN is ON)
+if [[ -z "${ONEDNN_DEFAULT_FPMATH_MODE:-}" && "${TF_ENABLE_ONEDNN_OPTS:-0}" == "1" && "$_has_bf16" == "true" ]]; then
+  export ONEDNN_DEFAULT_FPMATH_MODE=BF16
+fi
+
+# jemalloc: 14-17% ME speedup. Enable if available and not overridden.
+_jemalloc_path="/usr/lib/aarch64-linux-gnu/libjemalloc.so.2"
+if [[ -z "${LD_PRELOAD:-}" && -f "$_jemalloc_path" ]]; then
+  export LD_PRELOAD="$_jemalloc_path"
+  export MALLOC_CONF="background_thread:true,metadata_thp:auto"
+fi
+
+echo "Config: cpu=${_cpu_family} bf16=${_has_bf16} onednn=${TF_ENABLE_ONEDNN_OPTS:-0} jemalloc=${LD_PRELOAD:+yes}"
 
 # Detect available RAM (respects Docker --memory limit via cgroup).
 # Each INT8 ONNX CV worker uses ~3 GB RSS. Reserve 4 GB for ME/PP/OS.
@@ -182,9 +244,13 @@ else
   esac
 fi
 
-# Resolve ONNX model path
+# Resolve ONNX model path — prefer INT8 (2.3x faster, 74% smaller)
 if [[ -z "$ONNX_MODEL" ]]; then
-  ONNX_MODEL="${MODEL_CKPT}/model.onnx"
+  if [[ -f "${MODEL_CKPT}/model_int8_static.onnx" ]]; then
+    ONNX_MODEL="${MODEL_CKPT}/model_int8_static.onnx"
+  else
+    ONNX_MODEL="${MODEL_CKPT}/model.onnx"
+  fi
 fi
 if [[ ! -f "$ONNX_MODEL" ]]; then
   echo "ERROR: ONNX model not found at $ONNX_MODEL" >&2
@@ -282,8 +348,12 @@ esac
 unset OMP_NUM_THREADS OMP_PROC_BIND OMP_PLACES 2>/dev/null || true
 
 ME_START=$(date +%s)
+echo "  Launching ${NUM_SHARDS} shards..."
+# Use --bar for progress if tty available, otherwise --line-buffer
+_parallel_progress="--line-buffer"
+[[ -t 2 ]] && _parallel_progress="--bar"
 seq 0 $((NUM_SHARDS - 1)) | \
-  parallel -q --halt 2 --line-buffer \
+  parallel -q --halt 2 $_parallel_progress \
   /opt/deepvariant/bin/make_examples "${ME_BASE_ARGS[@]}" --task {}
 ME_END=$(date +%s)
 ME_TIME=$((ME_END - ME_START))
