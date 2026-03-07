@@ -143,7 +143,8 @@ _NOCOMPRESS_INTERMEDIATES = flags.DEFINE_bool(
         'Optional. If set, write intermediate TFRecord files '
         '(examples, gvcf, call_variant_outputs) without gzip compression. '
         'Saves ~8%% of make_examples CPU at the cost of ~4x larger '
-        'intermediate files. Recommended on NVMe or tmpfs. '
+        'intermediate files (~12 GB scratch for chr20, ~600 GB for '
+        'full WGS). Recommended on NVMe or tmpfs with sufficient space. '
         'No effect when --fast_pipeline is enabled.'
     ),
 )

@@ -825,9 +825,14 @@ def call_variants(
     # spinning up and shutting down many processes.
     total_writer_process = min(total_writer_process, _MAX_WRITER_THREADS)
     # Convert output filename to sharded output filename.
-    output_file = output_file.replace(
-        '.tfrecord.gz', '@' + str(total_writer_process) + '.tfrecord.gz'
-    )
+    if '.tfrecord.gz' in output_file:
+      output_file = output_file.replace(
+          '.tfrecord.gz', '@' + str(total_writer_process) + '.tfrecord.gz'
+      )
+    else:
+      output_file = output_file.replace(
+          '.tfrecord', '@' + str(total_writer_process) + '.tfrecord'
+      )
     paths = sharded_file_utils.maybe_generate_sharded_filenames(output_file)
 
   writer_queues = []
@@ -1094,8 +1099,8 @@ def main(argv=()):
 
     if not sharded_file_utils.is_sharded_filename(
         outfile
-    ) and not outfile.endswith('.tfrecord.gz'):
-      raise ValueError('Output filename must end with .tfrecord.gz')
+    ) and not (outfile.endswith('.tfrecord.gz') or outfile.endswith('.tfrecord')):
+      raise ValueError('Output filename must end with .tfrecord.gz or .tfrecord')
 
     if _ACTIVATION_LAYERS.value:
       if not _INCLUDE_DEBUG_INFO.value:
