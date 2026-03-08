@@ -3,6 +3,9 @@ name: Bump Version
 on:
   workflow_dispatch:
 
+env:
+  BRANCH_NEW: "bump-${{ github.run_number }}-main"
+
 jobs:
   bump:
     runs-on: ubuntu-latest
@@ -12,36 +15,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure git
+      - name: Configure git and create branch
         run: |
           git config user.email "bump@deepvariant-arm64.gha"
           git config user.name "bump-my-version"
-          BRANCH="bump-${{ github.run_number }}-main"
-          git checkout -b "$BRANCH"
-          echo "BRANCH=$BRANCH" >> "$GITHUB_ENV"
+          git checkout -b "${{ env.BRANCH_NEW }}"
 
       - name: Bump version
         id: bump
         uses: callowayproject/bump-my-version@0.29.0
+        env:
+          BUMPVERSION_TAG: "true"
         with:
           args: arm64
+          branch: ${{ env.BRANCH_NEW }}
 
       - name: Create PR
         if: steps.bump.outputs.bumped == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git push origin "$BRANCH"
           gh pr create \
             --base main \
-            --head "$BRANCH" \
-            --title "bump: v${{ steps.bump.outputs.current-version }} [skip ci bump]" \
-            --body "Automated version bump: ${{ steps.bump.outputs.previous-version }} → ${{ steps.bump.outputs.current-version }}"
+            --head "${{ env.BRANCH_NEW }}" \
+            --title "release: v${{ steps.bump.outputs.current-version }} [skip ci bump]" \
+            --body "Automated version bump: v${{ steps.bump.outputs.previous-version }} → v${{ steps.bump.outputs.current-version }}"
 
       - name: Cleanup on failure
         if: failure() || cancelled()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git push origin --delete "$BRANCH" 2>/dev/null || true
-          gh pr close "$BRANCH" 2>/dev/null || true
+          git push origin --delete "${{ env.BRANCH_NEW }}" 2>/dev/null || true
+          gh pr close "${{ env.BRANCH_NEW }}" 2>/dev/null || true
+          gh api repos/${{ github.repository }}/git/refs/tags/v${{ steps.bump.outputs.current-version }} -X DELETE 2>/dev/null || true
