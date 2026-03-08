@@ -655,7 +655,7 @@ function get_docker_image() {
     if [[ "${USE_GPU}" = true ]]; then
       IMAGE="deepsomatic_gpu:latest"
       run "sudo docker build \
-        -f Dockerfile.deepsomatic \
+        -f docker/Dockerfile.deepsomatic \
         --build-arg=FROM_IMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04 \
         --build-arg=DV_GPU_BUILD=1 -t deepsomatic_gpu ."
       run echo "Done building GPU Docker image ${IMAGE}."
@@ -663,8 +663,8 @@ function get_docker_image() {
     else
       IMAGE="deepsomatic:latest"
       # Building twice in case the first one times out.
-      run "sudo docker build -f Dockerfile.deepsomatic -t deepsomatic . || \
-        (sleep 5 ; sudo docker build -f Dockerfile.deepsomatic -t deepsomatic .)"
+      run "sudo docker build -f docker/Dockerfile.deepsomatic -t deepsomatic . || \
+        (sleep 5 ; sudo docker build -f docker/Dockerfile.deepsomatic -t deepsomatic .)"
       run echo "Done building Docker image ${IMAGE}."
     fi
 

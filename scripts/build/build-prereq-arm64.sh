@@ -10,7 +10,7 @@ set -euo pipefail
 echo ========== This script is maintained for Ubuntu 22.04 on ARM64.
 echo ========== Load config settings.
 
-source settings_arm64.sh
+source "$(dirname "$0")/settings_arm64.sh"
 
 ARCH=$(uname -m)
 if [[ "${ARCH}" != "aarch64" ]]; then
@@ -24,7 +24,7 @@ fi
 
 note_build_stage "Install the runtime packages"
 
-./run-prereq.sh
+./scripts/build/run-prereq.sh
 
 note_build_stage "Update package list"
 

@@ -1,44 +1,37 @@
 # Copyright 2019 Google LLC.
-# Modifications Copyright 2024 deepvariant-linux-arm64 contributors.
+# This is used to build the DeepVariant release docker image.
+# It can also be used to build local images, especially if you've made changes
+# to the code.
+# Example command:
+# $ git clone https://github.com/google/deepvariant.git
+# $ cd deepvariant
+# $ sudo docker build -t deepvariant .
 #
-# ARM64-specific Dockerfile for DeepVariant.
-# Must be built on an aarch64 host (native build, no cross-compilation).
-#
-# Build (full from-source, ~10 hours on 8-core ARM64):
-#   docker build -f Dockerfile.arm64 -t deepvariant-arm64 .
-#
-# Build with GPU support (Jetson):
-#   docker build -f Dockerfile.arm64 \
-#     --build-arg=FROM_IMAGE=nvcr.io/nvidia/l4t-tensorflow:r35.2.1-tf2.11-py3 \
-#     --build-arg=DV_GPU_BUILD=1 \
-#     -t deepvariant-arm64-gpu .
-#
-# NOTE: Ubuntu 24.04 is required because GCC 13+ is needed for TF 2.13.1
-# compilation. GLIBC 2.38+ binaries cannot run on Ubuntu 22.04.
-# Python 3.10 is installed via deadsnakes PPA (required by TF 2.13.1).
+# To build for GPU, use a command like:
+# $ sudo docker build --build-arg=FROM_IMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04 --build-arg=DV_GPU_BUILD=1 -t deepvariant_gpu .
 
-ARG FROM_IMAGE=arm64v8/ubuntu:24.04
+
+ARG FROM_IMAGE=ubuntu:22.04
+# PYTHON_VERSION is also set in settings.sh.
 ARG PYTHON_VERSION=3.10
 ARG DV_GPU_BUILD=0
 ARG VERSION=1.9.0
+ARG TF_ENABLE_ONEDNN_OPTS=1
 
-FROM ${FROM_IMAGE} AS builder
-LABEL maintainer="https://github.com/antomicblitz/deepvariant-linux-arm64/issues"
+FROM condaforge/miniforge3:24.9.2-0 as conda_setup
+RUN conda config --add channels bioconda
+RUN conda create -n bio \
+                    bioconda::bcftools=1.15 \
+                    bioconda::samtools=1.15 \
+    && conda clean -a
+
+FROM ${FROM_IMAGE} as builder
+COPY --from=conda_setup /opt/conda /opt/conda
+LABEL maintainer="https://github.com/google/deepvariant/issues"
 
 ARG DV_GPU_BUILD
-ARG PYTHON_VERSION
 ENV DV_GPU_BUILD=${DV_GPU_BUILD}
 ENV DV_BIN_PATH=/opt/deepvariant/bin
-ENV PIP_BREAK_SYSTEM_PACKAGES=1
-
-# Install Python 3.10 from deadsnakes PPA (Ubuntu 24.04 ships 3.12)
-RUN apt-get update -qq && \
-    apt-get install -qq -y software-properties-common && \
-    add-apt-repository -y ppa:deadsnakes/ppa && \
-    apt-get update -qq && \
-    apt-get install -qq -y python3.10 python3.10-dev python3.10-distutils && \
-    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 10 && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Copying DeepVariant source code
 COPY . /opt/deepvariant
@@ -48,86 +41,116 @@ ENV VERSION=${VERSION}
 
 WORKDIR /opt/deepvariant
 
-# Use ARM64-specific build scripts
-# Note: cryptography+cffi fix between scripts — pip isn't available until
-# after build-prereq installs it, but TF import in build_release needs it.
-RUN chmod +x build-prereq-arm64.sh build_release_binaries_arm64.sh && \
-    ./build-prereq-arm64.sh \
-    && PATH="${HOME}/.local/bin:${HOME}/bin:${PATH}" pip3 install --ignore-installed cryptography cffi "httplib2<0.22" \
-    && PATH="${HOME}/bin:${PATH}" ./build_release_binaries_arm64.sh
+RUN echo "Acquire::http::proxy \"$http_proxy\";\n" \
+         "Acquire::https::proxy \"$https_proxy\";" > "/etc/apt/apt.conf"
+
+RUN ./scripts/build/build-prereq.sh \
+  && PATH="${HOME}/bin:${PATH}" ./scripts/build/build_release_binaries.sh  # PATH for bazel
 
 FROM ${FROM_IMAGE}
 ARG DV_GPU_BUILD
 ARG VERSION
 ARG PYTHON_VERSION
+ARG TF_ENABLE_ONEDNN_OPTS
 ENV DV_GPU_BUILD=${DV_GPU_BUILD}
-ENV VERSION=${VERSION}
-ENV PYTHON_VERSION=${PYTHON_VERSION}
-# TF_ENABLE_ONEDNN_OPTS intentionally NOT set here.
-# The docker_entrypoint.sh auto-detects BF16 and sets it appropriately:
-#   BF16 detected (Graviton3+): ON  — BFMMLA acceleration
-#   No BF16 (N1, AmpereOne):    OFF — avoids 29% ME overhead / SIGILL
-# Override: docker run -e TF_ENABLE_ONEDNN_OPTS=1 ...
-ENV PIP_BREAK_SYSTEM_PACKAGES=1
+ENV VERSION ${VERSION}
+ENV PYTHON_VERSION ${PYTHON_VERSION}
+ENV TF_ENABLE_ONEDNN_OPTS ${TF_ENABLE_ONEDNN_OPTS}
+
+RUN echo "Acquire::http::proxy \"$http_proxy\";\n" \
+         "Acquire::https::proxy \"$https_proxy\";" > "/etc/apt/apt.conf"
 
 WORKDIR /opt/
-
-# Install Python 3.10, samtools, and bcftools
-RUN apt-get update -qq && \
-    apt-get install -qq -y software-properties-common && \
-    add-apt-repository -y ppa:deadsnakes/ppa && \
-    apt-get update -qq && \
-    apt-get install -qq -y python3.10 python3.10-dev python3.10-distutils \
-                           samtools bcftools && \
-    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 10 && \
-    update-alternatives --install /usr/bin/python python /usr/bin/python3.10 10 && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
-
 COPY --from=builder /opt/deepvariant/bazel-bin/licenses.zip .
 
-# ARM64: use aarch64-opt instead of k8-opt
 WORKDIR /opt/deepvariant/bin/
-COPY --from=builder /opt/deepvariant/run-prereq.sh .
-COPY --from=builder /opt/deepvariant/settings.sh .
-COPY --from=builder /opt/deepvariant/settings_arm64.sh .
-COPY --from=builder /opt/deepvariant/bazel-out/aarch64-opt/bin/deepvariant/make_examples.zip  .
-COPY --from=builder /opt/deepvariant/bazel-out/aarch64-opt/bin/deepvariant/call_variants.zip  .
-COPY --from=builder /opt/deepvariant/bazel-out/aarch64-opt/bin/deepvariant/postprocess_variants.zip  .
-COPY --from=builder /opt/deepvariant/bazel-out/aarch64-opt/bin/deepvariant/vcf_stats_report.zip  .
-COPY --from=builder /opt/deepvariant/bazel-out/aarch64-opt/bin/deepvariant/show_examples.zip  .
-COPY --from=builder /opt/deepvariant/bazel-out/aarch64-opt/bin/deepvariant/runtime_by_region_vis.zip  .
-COPY --from=builder /opt/deepvariant/bazel-out/aarch64-opt/bin/deepvariant/multisample_make_examples.zip  .
-COPY --from=builder /opt/deepvariant/bazel-out/aarch64-opt/bin/deepvariant/labeler/labeled_examples_to_vcf.zip  .
-COPY --from=builder /opt/deepvariant/bazel-out/aarch64-opt/bin/deepvariant/convert_to_saved_model.zip  .
-COPY --from=builder /opt/deepvariant/bazel-out/aarch64-opt/bin/deepvariant/make_examples_somatic.zip  .
-COPY --from=builder /opt/deepvariant/bazel-out/aarch64-opt/bin/deepvariant/train.zip  .
-COPY --from=builder /opt/deepvariant/bazel-out/aarch64-opt/bin/deepvariant/fast_pipeline .
+COPY --from=builder /opt/conda /opt/conda
+COPY --from=builder /opt/deepvariant/scripts/build/run-prereq.sh .
+COPY --from=builder /opt/deepvariant/scripts/build/settings.sh .
+COPY --from=builder /opt/deepvariant/bazel-out/k8-opt/bin/deepvariant/make_examples.zip  .
+COPY --from=builder /opt/deepvariant/bazel-out/k8-opt/bin/deepvariant/call_variants.zip  .
+COPY --from=builder /opt/deepvariant/bazel-out/k8-opt/bin/deepvariant/postprocess_variants.zip  .
+COPY --from=builder /opt/deepvariant/bazel-out/k8-opt/bin/deepvariant/vcf_stats_report.zip  .
+COPY --from=builder /opt/deepvariant/bazel-out/k8-opt/bin/deepvariant/show_examples.zip  .
+COPY --from=builder /opt/deepvariant/bazel-out/k8-opt/bin/deepvariant/runtime_by_region_vis.zip  .
+COPY --from=builder /opt/deepvariant/bazel-out/k8-opt/bin/deepvariant/multisample_make_examples.zip  .
+COPY --from=builder /opt/deepvariant/bazel-out/k8-opt/bin/deepvariant/labeler/labeled_examples_to_vcf.zip  .
+COPY --from=builder /opt/deepvariant/bazel-out/k8-opt/bin/deepvariant/convert_to_saved_model.zip  .
+COPY --from=builder /opt/deepvariant/bazel-out/k8-opt/bin/deepvariant/make_examples_somatic.zip  .
+COPY --from=builder /opt/deepvariant/bazel-out/k8-opt/bin/deepvariant/train.zip  .
+COPY --from=builder /opt/deepvariant/bazel-out/k8-opt/bin/deepvariant/fast_pipeline .
 COPY --from=builder /opt/deepvariant/scripts/run_deepvariant.py .
 
 RUN ./run-prereq.sh
 
-# Fix cryptography ABI mismatch (system package compiled for Python 3.12)
-RUN PATH="/root/.local/bin:$PATH" pip3 install --ignore-installed cryptography cffi
-RUN PATH="/root/.local/bin:$PATH" pip3 install "httplib2<0.22"
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 0 && \
+    update-alternatives --install /usr/bin/python python /usr/bin/python${PYTHON_VERSION} 0
 
 # Create shell wrappers for python zip files for easier use.
 RUN \
-  for name in make_examples call_variants postprocess_variants vcf_stats_report \
-              show_examples runtime_by_region_vis multisample_make_examples \
-              convert_to_saved_model train; do \
-    printf '#!/bin/bash\n/usr/bin/python3 /opt/deepvariant/bin/%s.zip "$@"\n' "$name" > \
-      /opt/deepvariant/bin/$name && chmod +x /opt/deepvariant/bin/$name; \
-  done && \
-  for name in labeled_examples_to_vcf make_examples_somatic; do \
-    printf '#!/bin/bash\n/usr/bin/python3 -u /opt/deepvariant/bin/%s.zip "$@"\n' "$name" > \
-      /opt/deepvariant/bin/$name && chmod +x /opt/deepvariant/bin/$name; \
-  done && \
-  printf '#!/bin/bash\n/usr/bin/python3 -u /opt/deepvariant/bin/run_deepvariant.py "$@"\n' > \
-    /opt/deepvariant/bin/run_deepvariant && chmod +x /opt/deepvariant/bin/run_deepvariant && \
-  printf '#!/bin/bash\n/usr/bin/python3 /opt/deepvariant/scripts/quantize_static_onnx.py "$@"\n' > \
-    /opt/deepvariant/bin/quantize_model && chmod +x /opt/deepvariant/bin/quantize_model
+  BASH_HEADER='#!/bin/bash' && \
+  printf "%s\n%s\n" \
+    "${BASH_HEADER}" \
+    '/usr/bin/python3 /opt/deepvariant/bin/make_examples.zip "$@"' > \
+    /opt/deepvariant/bin/make_examples && \
+  printf "%s\n%s\n" \
+    "${BASH_HEADER}" \
+    '/usr/bin/python3 /opt/deepvariant/bin/call_variants.zip "$@"' > \
+    /opt/deepvariant/bin/call_variants && \
+  printf "%s\n%s\n" \
+    "${BASH_HEADER}" \
+    '/usr/bin/python3 /opt/deepvariant/bin/postprocess_variants.zip "$@"' > \
+    /opt/deepvariant/bin/postprocess_variants && \
+  printf "%s\n%s\n" \
+    "${BASH_HEADER}" \
+    '/usr/bin/python3 /opt/deepvariant/bin/vcf_stats_report.zip "$@"' > \
+    /opt/deepvariant/bin/vcf_stats_report && \
+  printf "%s\n%s\n" \
+    "${BASH_HEADER}" \
+    '/usr/bin/python3 /opt/deepvariant/bin/show_examples.zip "$@"' > \
+    /opt/deepvariant/bin/show_examples && \
+  printf "%s\n%s\n" \
+    "${BASH_HEADER}" \
+    '/usr/bin/python3 /opt/deepvariant/bin/runtime_by_region_vis.zip "$@"' > \
+    /opt/deepvariant/bin/runtime_by_region_vis && \
+  printf "%s\n%s\n" \
+    "${BASH_HEADER}" \
+    '/usr/bin/python3 /opt/deepvariant/bin/multisample_make_examples.zip "$@"' > \
+    /opt/deepvariant/bin/multisample_make_examples && \
+  printf "%s\n%s\n" \
+    "${BASH_HEADER}" \
+    '/usr/bin/python3 -u /opt/deepvariant/bin/labeled_examples_to_vcf.zip "$@"' > \
+    /opt/deepvariant/bin/labeled_examples_to_vcf && \
+  printf "%s\n%s\n" \
+    "${BASH_HEADER}" \
+    '/usr/bin/python3 /opt/deepvariant/bin/convert_to_saved_model.zip "$@"' > \
+    /opt/deepvariant/bin/convert_to_saved_model && \
+  printf "%s\n%s\n" \
+    "${BASH_HEADER}" \
+    '/usr/bin/python3 -u /opt/deepvariant/bin/make_examples_somatic.zip "$@"' > \
+    /opt/deepvariant/bin/make_examples_somatic && \
+  printf "%s\n%s\n" \
+    "${BASH_HEADER}" \
+    '/usr/bin/python3 -u /opt/deepvariant/bin/run_deepvariant.py "$@"' > \
+    /opt/deepvariant/bin/run_deepvariant && \
+  printf "%s\n%s\n" \
+    "${BASH_HEADER}" \
+    '/usr/bin/python3 /opt/deepvariant/bin/train.zip "$@"' > \
+    /opt/deepvariant/bin/train && \
+  chmod +x /opt/deepvariant/bin/make_examples \
+    /opt/deepvariant/bin/call_variants \
+    /opt/deepvariant/bin/postprocess_variants \
+    /opt/deepvariant/bin/vcf_stats_report \
+    /opt/deepvariant/bin/show_examples \
+    /opt/deepvariant/bin/runtime_by_region_vis \
+    /opt/deepvariant/bin/multisample_make_examples \
+    /opt/deepvariant/bin/run_deepvariant \
+    /opt/deepvariant/bin/labeled_examples_to_vcf \
+    /opt/deepvariant/bin/convert_to_saved_model \
+    /opt/deepvariant/bin/make_examples_somatic \
+    /opt/deepvariant/bin/train
 
-# Copy models (same as upstream — models are architecture-independent)
+# Copy models
 WORKDIR /opt/models/wgs
 ADD https://storage.googleapis.com/deepvariant/models/DeepVariant/${VERSION}/savedmodels/deepvariant.wgs.savedmodel/fingerprint.pb .
 ADD https://storage.googleapis.com/deepvariant/models/DeepVariant/${VERSION}/savedmodels/deepvariant.wgs.savedmodel/saved_model.pb .
@@ -210,40 +233,15 @@ ADD https://storage.googleapis.com/deepvariant/models/DeepVariant/${VERSION}/sma
 ADD https://storage.googleapis.com/deepvariant/models/DeepVariant/${VERSION}/smallmodels/deepvariant.ont.smallmodel/variables/variables.index .
 RUN chmod -R +r /opt/smallmodels/ont_r104/*
 
-ENV PATH="$PATH:/opt/deepvariant/bin"
+ENV PATH="${PATH}":/opt/conda/bin:/opt/conda/envs/bio/bin:/opt/deepvariant/bin
 
 RUN apt-get -y update && \
-  apt-get install -y parallel python3-pip libjemalloc2 wget && \
+  apt-get install -y parallel python3-pip && \
   PATH="${HOME}/.local/bin:$PATH" python3 -m pip install absl-py==0.13.0 && \
   apt-get clean autoclean && \
   apt-get autoremove -y --purge && \
   rm -rf /var/lib/apt/lists/*
 
-# ONNX Runtime for accelerated ARM64 inference
-RUN PATH="${HOME}/.local/bin:$PATH" pip3 install tf2onnx onnxruntime
-
-# Convert models to ONNX format for --use_onnx flag
-RUN python3 -m tf2onnx.convert --saved-model /opt/models/wgs --output /opt/models/wgs/model.onnx --opset 17 && \
-    python3 -m tf2onnx.convert --saved-model /opt/models/wes --output /opt/models/wes/model.onnx --opset 17 && \
-    python3 -m tf2onnx.convert --saved-model /opt/models/pacbio --output /opt/models/pacbio/model.onnx --opset 17
-
-# Download pre-validated INT8 WGS model (SNP F1=0.9978, INDEL F1=0.9962).
-# 21 MB vs 84 MB FP32. Optimal on non-BF16 platforms (2.3x over FP32).
-# Entrypoint auto-selects this when BF16 is not available.
-RUN wget -q -O /opt/models/wgs/model_int8_static.onnx \
-      https://github.com/antomicblitz/deepvariant-linux-arm64/releases/download/v1.9.0-arm64.5/model_int8_static.onnx
-
-# Scripts: entrypoint, autoconfig, parallel CV wrapper, quantization, ONNX conversion
-COPY scripts/docker_entrypoint.sh /opt/deepvariant/bin/docker_entrypoint.sh
-COPY scripts/autoconfig.sh /opt/deepvariant/scripts/autoconfig.sh
-COPY scripts/run_parallel_cv.sh /opt/deepvariant/scripts/run_parallel_cv.sh
-COPY scripts/quantize_static_onnx.py /opt/deepvariant/scripts/quantize_static_onnx.py
-COPY scripts/convert_model_onnx.py /opt/deepvariant/scripts/convert_model_onnx.py
-RUN chmod +x /opt/deepvariant/bin/docker_entrypoint.sh \
-             /opt/deepvariant/scripts/autoconfig.sh \
-             /opt/deepvariant/scripts/run_parallel_cv.sh
-
 WORKDIR /opt/deepvariant
 
-ENTRYPOINT ["/opt/deepvariant/bin/docker_entrypoint.sh"]
 CMD ["/opt/deepvariant/bin/run_deepvariant", "--help"]

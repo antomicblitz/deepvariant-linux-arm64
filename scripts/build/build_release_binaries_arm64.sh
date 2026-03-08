@@ -6,7 +6,7 @@
 # Based on upstream build_release_binaries.sh with k8-opt replaced by aarch64-opt.
 
 # NOLINT
-source settings_arm64.sh
+source "$(dirname "$0")/settings_arm64.sh"
 
 set -e
 

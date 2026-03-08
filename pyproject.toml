@@ -1,0 +1,75 @@
+[project]
+name = "deepvariant-linux-arm64"
+version = "1.9.0.post5"
+description = "DeepVariant variant caller ported to Linux ARM64 with hardware-accelerated inference"
+license = "BSD-3-Clause"
+requires-python = ">=3.10"
+
+[dependency-groups]
+dev = [
+    "ruff",
+    "pyright",
+    "pytest",
+    "complexipy",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+src = ["scripts", "deepvariant"]
+extend-include = ["*.py"]
+extend-exclude = ["bazel-*", "third_party"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "S",    # flake8-bandit (security)
+    "UP",   # pyupgrade
+]
+ignore = [
+    "E501",   # line too long (mixed upstream + fork code)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"*_test.py" = ["S101"]  # assert is standard in tests
+"scripts/build_proto.py" = ["S603", "S607"]  # subprocess calls to protoc
+# Reason: upstream google/deepvariant code — not maintained in this fork
+"deepvariant/**" = [
+    "UP", "B", "S", "I001",
+    "E402", "E712", "E722", "E731", "E741",
+    "F401", "F541", "F811", "F821", "F841",
+]
+# Reason: upstream scripts forked from google/deepvariant
+"scripts/run_deepvariant.py" = ["UP", "B", "S", "I001", "E402", "F821", "F841"]
+"scripts/run_deeptrio.py" = ["UP", "B", "S", "I001", "E402", "F821", "F841"]
+"scripts/run_deepsomatic.py" = ["UP", "B", "S", "I001", "E402", "F821", "F841"]
+"scripts/run_pangenome_aware_deepvariant.py" = ["UP", "B", "S", "I001", "E402", "F821", "F841"]
+"scripts/*_test.py" = ["UP", "B", "S", "I001", "E402", "F821", "F841"]
+"scripts/export_efficientnet_b3.py" = ["UP", "B", "S", "I001", "E402", "F541"]
+"scripts/generate_benchmark_charts.py" = ["UP", "B", "S", "I001", "F401", "F841"]
+
+[tool.ruff.format]
+quote-style = "single"
+
+[tool.pyright]
+pythonVersion = "3.10"
+# Reason: only build_proto.py has stdlib-only imports; all other scripts
+# require tensorflow/onnxruntime/numpy not in dev dependencies
+include = ["scripts/build_proto.py"]
+exclude = ["**/node_modules", "**/__pycache__", "bazel-*", "third_party"]
+ignore = ["deepvariant"]
+typeCheckingMode = "basic"
+reportMissingImports = "warning"
+reportMissingTypeStubs = false
+
+[tool.pytest.ini_options]
+testpaths = ["scripts", "deepvariant"]
+python_files = ["*_test.py"]
+python_functions = ["test_*"]
+
+[tool.complexipy]
+max_complexity = 15

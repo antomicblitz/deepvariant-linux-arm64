@@ -33,7 +33,7 @@ set -euo pipefail
 echo ========== This script is only maintained for Ubuntu 22.04.
 echo ========== Load config settings.
 
-source settings.sh
+source "$(dirname "$0")/settings.sh"
 
 ################################################################################
 # Misc. setup
@@ -41,7 +41,7 @@ source settings.sh
 
 note_build_stage "Install the runtime packages"
 
-./run-prereq.sh
+./scripts/build/run-prereq.sh
 
 note_build_stage "Update package list"
 

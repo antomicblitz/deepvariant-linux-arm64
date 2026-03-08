@@ -38,7 +38,7 @@ set -euo pipefail
 echo ========== This script is only maintained for Ubuntu 22.04.
 echo ========== Load config settings.
 
-source settings.sh
+source "$(dirname "$0")/settings.sh"
 
 ################################################################################
 # misc setup

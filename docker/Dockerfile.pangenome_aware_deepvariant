@@ -5,10 +5,10 @@
 # Example command:
 # $ git clone https://github.com/google/deepvariant.git
 # $ cd deepvariant
-# $ sudo docker build -f Dockerfile.pangenome_aware_deepvariant -t pangenome_aware_deepvariant .
+# $ sudo docker build -f docker/Dockerfile.pangenome_aware_deepvariant -t pangenome_aware_deepvariant .
 #
 # To build for GPU, use a command like:
-# $ sudo docker build -f Dockerfile.pangenome_aware_deepvariant --build-arg=FROM_IMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04 --build-arg=DV_GPU_BUILD=1 -t pangenome_aware_deepvariant_gpu .
+# $ sudo docker build -f docker/Dockerfile.pangenome_aware_deepvariant --build-arg=FROM_IMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04 --build-arg=DV_GPU_BUILD=1 -t pangenome_aware_deepvariant_gpu .
 
 
 ARG FROM_IMAGE=ubuntu:22.04
@@ -39,8 +39,8 @@ COPY . /opt/deepvariant
 
 WORKDIR /opt/deepvariant
 
-RUN ./build-prereq.sh \
-  && PATH="${HOME}/bin:${PATH}" ./build_release_binaries.sh  # PATH for bazel
+RUN ./scripts/build/build-prereq.sh \
+  && PATH="${HOME}/bin:${PATH}" ./scripts/build/build_release_binaries.sh  # PATH for bazel
 
 FROM ${FROM_IMAGE}
 ARG DV_GPU_BUILD
@@ -57,8 +57,8 @@ COPY --from=builder /opt/deepvariant/bazel-bin/licenses.zip .
 
 WORKDIR /opt/deepvariant/bin/
 COPY --from=builder /opt/conda /opt/conda
-COPY --from=builder /opt/deepvariant/run-prereq.sh .
-COPY --from=builder /opt/deepvariant/settings.sh .
+COPY --from=builder /opt/deepvariant/scripts/build/run-prereq.sh .
+COPY --from=builder /opt/deepvariant/scripts/build/settings.sh .
 COPY --from=builder /opt/deepvariant/bazel-out/k8-opt/bin/deepvariant/make_examples_pangenome_aware_dv.zip  .
 COPY --from=builder /opt/deepvariant/bazel-out/k8-opt/bin/deepvariant/call_variants.zip  .
 COPY --from=builder /opt/deepvariant/bazel-out/k8-opt/bin/deepvariant/postprocess_variants.zip  .

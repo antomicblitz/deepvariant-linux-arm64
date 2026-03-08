@@ -67,8 +67,8 @@ class DeepVariantCalibrationDataReader:
     """
 
     def __init__(self, tfrecord_dir, saved_model_dir, num_samples=500):
-        from onnxruntime.quantization import CalibrationDataReader
         import numpy as np
+        from onnxruntime.quantization import CalibrationDataReader  # noqa: F401
 
         self._np = np
 
@@ -111,8 +111,8 @@ class DeepVariantCalibrationDataReader:
     def _load_images(self, files, num_samples):
         """Extract preprocessed pileup images from TFRecords."""
         os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '2')
-        import tensorflow as tf
         import numpy as np
+        import tensorflow as tf  # noqa: E402
 
         proto_features = {
             'image/encoded': tf.io.FixedLenFeature((), tf.string),
@@ -175,8 +175,8 @@ def quantize_static(input_path, output_path, calibration_reader,
         percentile_value: Percentile for clipping (default 99.99). Only used
             when calibration_method='percentile'.
     """
-    from onnxruntime.quantization import quantize_static as ort_quantize_static
     from onnxruntime.quantization import CalibrationMethod, QuantType
+    from onnxruntime.quantization import quantize_static as ort_quantize_static
 
     # Map method name to enum
     method_map = {
@@ -239,10 +239,10 @@ def quantize_static(input_path, output_path, calibration_reader,
     reduction = (1 - quant_size / orig_size) * 100
     print(f'\nOriginal: {orig_size:.1f} MB')
     print(f'Quantized: {quant_size:.1f} MB ({reduction:.1f}% smaller)')
-    print(f'\nIMPORTANT: Validate accuracy with hap.py on HG002 before use.')
-    print(f'  SNP F1 >= 0.9995, INDEL F1 >= 0.9945')
-    print(f'  Include GIAB stratified BED files (low-complexity, satellites,')
-    print(f'  tandem repeats, homopolymers, segmental duplications).')
+    print('\nIMPORTANT: Validate accuracy with hap.py on HG002 before use.')
+    print('  SNP F1 >= 0.9995, INDEL F1 >= 0.9945')
+    print('  Include GIAB stratified BED files (low-complexity, satellites,')
+    print('  tandem repeats, homopolymers, segmental duplications).')
 
 
 def main():

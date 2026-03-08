@@ -124,7 +124,7 @@ def main():
     fp32_results = benchmark_model(
         args.fp32_model, 'FP32', images, batch_sizes, args.num_threads)
 
-    print(f'\nINT8 static:')
+    print('\nINT8 static:')
     int8_results = benchmark_model(
         args.int8_model, 'INT8', images, batch_sizes, args.num_threads)
 
@@ -138,8 +138,8 @@ def main():
                   f'INT8: {int8_results[bs]["rate"]:.3f} s/100)')
 
     # Also compare to TF+OneDNN BF16 baseline (0.232 s/100 measured)
-    print(f'\nReference: TF+OneDNN BF16 = 0.232 s/100 (measured)')
-    print(f'Reference: TF+OneDNN FP32 = 0.379 s/100 (measured)')
+    print('\nReference: TF+OneDNN BF16 = 0.232 s/100 (measured)')
+    print('Reference: TF+OneDNN FP32 = 0.379 s/100 (measured)')
     best_int8 = min(int8_results.values(), key=lambda x: x['rate'])
     best_bs = [k for k, v in int8_results.items()
                if v['rate'] == best_int8['rate']][0]

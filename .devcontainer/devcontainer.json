@@ -1,0 +1,40 @@
+{
+  "name": "DeepVariant ARM64 Dev",
+  "image": "mcr.microsoft.com/vscode/devcontainers/python:3.10",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "version": "latest",
+      "moby": false
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "anthropic.claude-code",
+        "charliermarsh.ruff",
+        "editorconfig.editorconfig",
+        "github.vscode-github-actions",
+        "ms-azuretools.vscode-docker",
+        "ms-python.debugpy",
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-vscode.makefile-tools",
+        "tamasfe.even-better-toml"
+      ],
+      "settings": {
+        "editor.lineNumbers": "on",
+        "editor.wordWrap": "on",
+        "files.autoSave": "onFocusChange",
+        "git.autofetch": true,
+        "git.enableSmartCommit": true,
+        "makefile.configureOnOpen": false,
+        "python.defaultInterpreterPath": "./.venv/bin/python"
+      }
+    }
+  },
+  "containerEnv": {
+    "UV_LINK_MODE": "copy"
+  },
+  "onCreateCommand": "curl -LsSf https://astral.sh/uv/install.sh | sh",
+  "postCreateCommand": "export PATH=\"$HOME/.local/bin:$PATH\" && uv sync --group dev"
+}

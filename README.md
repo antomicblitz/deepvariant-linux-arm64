@@ -440,11 +440,11 @@ build --cxxopt=-include --cxxopt=cstdint
 build --host_cxxopt=-include --host_cxxopt=cstdint
 EOF
 
-chmod +x build-prereq-arm64.sh build_release_binaries_arm64.sh
-./build-prereq-arm64.sh
-source settings_arm64.sh
-./build_release_binaries_arm64.sh
-docker build -f Dockerfile.arm64.runtime -t deepvariant-arm64 .
+chmod +x scripts/build/build-prereq-arm64.sh scripts/build/build_release_binaries_arm64.sh
+./scripts/build/build-prereq-arm64.sh
+source scripts/build/settings_arm64.sh
+./scripts/build/build_release_binaries_arm64.sh
+docker build -f docker/Dockerfile.arm64.runtime -t deepvariant-arm64 .
 ```
 
 Full build: several hours on an 8-core machine (~2273 Bazel actions).
@@ -455,9 +455,9 @@ Full build: several hours on an 8-core machine (~2273 Bazel actions).
 
 ## What Was Changed
 
-**New files:** `Dockerfile.arm64`, `Dockerfile.arm64.runtime`, `settings_arm64.sh`, `build-prereq-arm64.sh`, `build_release_binaries_arm64.sh`, `scripts/` (benchmarking, quantization, parallel CV, autoconfig, jemalloc ablation), and `workflows/` (Nextflow + Snakemake integration).
+**New files:** `docker/Dockerfile.arm64`, `docker/Dockerfile.arm64.runtime`, `scripts/build/settings_arm64.sh`, `scripts/build/build-prereq-arm64.sh`, `scripts/build/build_release_binaries_arm64.sh`, `scripts/` (benchmarking, quantization, parallel CV, autoconfig, jemalloc ablation), and `workflows/` (Nextflow + Snakemake integration).
 
-**Key modifications to upstream:** `third_party/htslib.BUILD` (NEON detection), `third_party/libssw.BUILD` (sse2neon), `tools/build_absl.sh` (clang-14), `run-prereq.sh` (Ubuntu 24.04), `deepvariant/call_variants.py` (ONNX inference, INT8 renormalization, SavedModel warmup). ACL v23.08 SVE filter and OneDNN indirect GEMM patches for AmpereOne preserved in `third_party/` for source rebuilds.
+**Key modifications to upstream:** `third_party/htslib.BUILD` (NEON detection), `third_party/libssw.BUILD` (sse2neon), `tools/build_absl.sh` (clang-14), `scripts/build/run-prereq.sh` (Ubuntu 24.04), `deepvariant/call_variants.py` (ONNX inference, INT8 renormalization, SavedModel warmup). ACL v23.08 SVE filter and OneDNN indirect GEMM patches for AmpereOne preserved in `third_party/` for source rebuilds.
 
 <details>
 <summary>Build fixes</summary>

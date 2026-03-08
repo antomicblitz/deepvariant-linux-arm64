@@ -1,7 +1,9 @@
 # CI workflow for building and testing DeepVariant on ARM64.
 #
-# Uses QEMU emulation for the build step (slow but free on GitHub Actions).
-# Accuracy testing requires a self-hosted ARM64 runner (Graviton, Ampere).
+# Uses native ARM64 runners (no QEMU emulation needed).
+# Runtime build uses a pre-built builder image from ghcr.io (~10min).
+# Full from-source builder rebuild available via workflow_dispatch (~1-2hr native).
+# Pushes images to ghcr.io on both PRs (tagged pr-N) and main (tagged latest).
 
 name: ARM64 Build & Test
 
@@ -14,51 +16,129 @@ on:
       - 'LICENSE'
   pull_request:
     branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - 'LICENSE'
   workflow_dispatch:
+    inputs:
+      rebuild_builder:
+        description: 'Rebuild base builder image from source (~1-2hr native ARM64)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
 
 env:
   DOCKER_IMAGE: deepvariant-arm64
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  # Reason: tag used for COPY --from in runtime Dockerfile
+  BUILDER_TAG: base-builder-v1.9.0
 
 jobs:
-  build-arm64:
-    name: Build ARM64 Docker Image
+  lint-and-typecheck:
+    name: Lint & Type Check
     runs-on: ubuntu-latest
-    timeout-minutes: 240
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up QEMU for ARM64 emulation
-        uses: docker/setup-qemu-action@v3
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
         with:
-          platforms: arm64
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        run: uv python install 3.10
+
+      - name: Install dev dependencies
+        run: uv sync --group dev
+
+      - name: Lint with ruff
+        run: uv run ruff check scripts/*.py deepvariant/ --output-format=github
+
+      - name: Type check with pyright
+        run: uv run pyright
+
+  # Rebuild the base builder image from source (Bazel compilation).
+  # Only runs on manual dispatch with rebuild_builder=true.
+  # Reason: native ARM64 runner — no QEMU, ~1-2hr vs ~4hr+ emulated
+  build-builder:
+    name: Rebuild Base Builder Image
+    if: github.event_name == 'workflow_dispatch' && inputs.rebuild_builder == 'true'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GitHub Container Registry
-        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build ARM64 Docker image
+      - name: Build and push base builder image
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: Dockerfile.arm64
-          platforms: linux/arm64
-          push: ${{ github.event_name != 'pull_request' }}
+          file: docker/Dockerfile.arm64.builder
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.BUILDER_TAG }}
+          cache-from: type=gha,scope=builder
+          cache-to: type=gha,mode=max,scope=builder
+
+  # Build the runtime image using the pre-built builder base (~10min native).
+  # Reason: native ARM64 runner — no QEMU needed for apt-get, pip, tf2onnx
+  # Waits for builder rebuild if triggered via dispatch with rebuild_builder=true
+  build-arm64:
+    name: Build ARM64 Docker Image
+    needs: [build-builder]
+    if: always() && (needs.build-builder.result == 'success' || needs.build-builder.result == 'skipped')
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker meta (tags for main and PR branches)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=
+            type=ref,event=pr
+
+      - name: Build and push ARM64 Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BUILDER_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.BUILDER_TAG }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

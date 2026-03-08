@@ -34,7 +34,7 @@
 # Google Cloud Engine chipsets lowest possible is Sandy Bridge).
 
 # NOLINT
-source settings.sh
+source "$(dirname "$0")/settings.sh"
 
 set -e
 

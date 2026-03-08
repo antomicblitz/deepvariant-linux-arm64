@@ -113,7 +113,7 @@ rm -rf /tmp/deepvariant.wgs.savedmodel
 gsutil -m cp -R ${MODEL} /tmp/
 MODEL=/tmp/deepvariant.wgs.savedmodel
 
-source settings.sh
+source scripts/build/settings.sh
 
 # Need to run this first, otherwise the bazel build command below will complain
 # about deepvariant/examples_from_stream.so.

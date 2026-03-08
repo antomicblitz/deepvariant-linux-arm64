@@ -27,7 +27,11 @@
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
-"""Defines a custom build command that generates Python files from .proto files."""
+"""Generates Python files from .proto files.
+
+Extracted from root setup.py to decouple proto generation from Python packaging.
+Run from repo root: python scripts/build_proto.py
+"""
 
 import glob
 import os
@@ -35,54 +39,31 @@ import shutil
 import subprocess
 import sys
 
-from setuptools import Command
-from setuptools import find_packages
-from setuptools import setup
 
-if 'PROTOC' in os.environ and os.path.exists(os.environ['PROTOC']):
-  protoc = os.environ['PROTOC']
-else:
-  protoc = shutil.which('protoc')
+def _find_protoc():
+    """Locate protoc binary from env or PATH."""
+    if 'PROTOC' in os.environ and os.path.exists(os.environ['PROTOC']):
+        return os.environ['PROTOC']
+    return shutil.which('protoc')
 
 
 def generate_proto(source):
-  """Generates Python files from .proto files."""
-  if not protoc or not os.path.exists(source):
-    return
-  if os.path.isdir(source):
-    files = glob.glob(os.path.join(source, '*.proto'))
-  else:
-    files = [source]
+    """Generates Python files from .proto files."""
+    protoc = _find_protoc()
+    if not protoc or not os.path.exists(source):
+        return
+    if os.path.isdir(source):
+        files = glob.glob(os.path.join(source, '*.proto'))
+    else:
+        files = [source]
 
-  for f in files:
-    protoc_command = [protoc, '-I.', '--python_out=.', f]
-    print(protoc_command)
-    if subprocess.call(protoc_command) != 0:
-      sys.exit(-1)
+    for f in files:
+        protoc_command = [protoc, '-I.', '--python_out=.', f]
+        print(protoc_command)
+        if subprocess.call(protoc_command) != 0:
+            sys.exit(-1)
 
 
-# Define a custom build command that generates Python files from .proto files
-class BuildProtoCommand(Command):
-  user_options = []
-
-  def initialize_options(self):
-    pass
-
-  def finalize_options(self):
-    pass
-
-  def run(self):
+if __name__ == '__main__':
     generate_proto('deepvariant/protos/')
     generate_proto('third_party/nucleus/protos/')
-
-
-setup(
-    name='deepvariant',
-    version='1.9.0',
-    packages=find_packages(),
-    package_dir={'deepvariant': 'deepvariant', 'third_party': 'third_party'},
-    install_requires=[],
-    cmdclass={
-        'build_proto': BuildProtoCommand,
-    },
-)
