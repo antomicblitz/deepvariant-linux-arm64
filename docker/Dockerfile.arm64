@@ -14,9 +14,9 @@
 # NOTE: Ubuntu 24.04 required — GCC 13+ needed for TF 2.13.1 compilation.
 # Python 3.10 managed by uv (required by TF 2.13.1).
 
-ARG BUILDER_IMAGE=ghcr.io/qte77/deepvariant-linux-arm64:base-builder-v1.9.0
+ARG BUILDER_IMAGE=ghcr.io/qte77/deepvariant-linux-arm64:base-builder-v1.9.1
 ARG FROM_IMAGE=arm64v8/ubuntu:24.04
-ARG VERSION=1.9.0
+ARG VERSION=1.9.1
 
 # --- Stage 1: pre-built Bazel binaries ---------------------------------------
 FROM ${BUILDER_IMAGE} AS builder

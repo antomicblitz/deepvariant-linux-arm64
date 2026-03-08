@@ -32,7 +32,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
   # Reason: tag used for COPY --from in runtime Dockerfile
-  BUILDER_TAG: base-builder-v1.9.0
+  BUILDER_TAG: base-builder-v1.9.1
 
 jobs:
   # Rebuild the base builder image from source (Bazel compilation).
