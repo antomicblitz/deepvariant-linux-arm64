@@ -18,7 +18,8 @@ ARG DV_GPU_BUILD=0
 ARG VERSION=1.9.0
 
 FROM ${FROM_IMAGE} AS builder
-LABEL maintainer="https://github.com/antomicblitz/deepvariant-linux-arm64/issues"
+LABEL maintainer="https://github.com/qte77/deepvariant-linux-arm64/issues" \
+      org.opencontainers.image.source="https://github.com/qte77/deepvariant-linux-arm64"
 
 ARG DV_GPU_BUILD
 ARG PYTHON_VERSION

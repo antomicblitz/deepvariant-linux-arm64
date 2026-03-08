@@ -98,6 +98,7 @@ RUN wget -q -O /opt/models/wgs/model_int8_static.onnx \
 
 # --- Stage 3: runtime --------------------------------------------------------
 FROM ${FROM_IMAGE}
+LABEL org.opencontainers.image.source="https://github.com/qte77/deepvariant-linux-arm64"
 ARG VERSION
 ENV VERSION=${VERSION}
 ENV PATH="$PATH:/opt/deepvariant/bin"
