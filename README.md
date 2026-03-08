@@ -506,6 +506,12 @@ Full build: several hours on an 8-core machine (~2273 Bazel actions).
 - [x] **WES model validation on ARM64** — INT8 ONNX, GIAB HG003, IDT exome 100x (SNP F1=0.9931, INDEL F1=0.9738, matches FP32 baseline). WES INT8 is 24% faster CV (0.120 vs 0.149 s/100).
 - [x] **Nextflow / Snakemake integration** — [`workflows/`](workflows/) with platform profiles (arm64, graviton, oracle_a1, hetzner). Supports single sample and batch CSV input.
 - [ ] Edge device validation (Jetson, RK3588)
+- [ ] **Upgrade TF 2.13.1 → 2.18+ and Python 3.10 → 3.13** — blocked on upstream google/deepvariant (still on TF 2.13.1). Plan:
+  1. Wait for upstream TF bump or fork TF 2.18 ARM64 build
+  2. Upgrade Bazel 5.3.0 → 6.x+, update WORKSPACE and third_party patches
+  3. Fix C++ kernel compilation against new TF headers (pybind11, protobuf ABI)
+  4. Rebuild base builder image from source
+  5. Re-validate accuracy (GIAB HG003 WGS + WES, compare F1 to current baseline)
 
 > For long-read ONT or PacBio data, see [Clair3](https://github.com/HKU-BAL/Clair3).
 
