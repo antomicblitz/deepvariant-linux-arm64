@@ -106,7 +106,7 @@ uv pip install "${UV_ARGS[@]}" 'sortedcontainers==2.1.0'
 uv pip install "${UV_ARGS[@]}" 'intervaltree==3.1.0'
 uv pip install "${UV_ARGS[@]}" 'mock>=2.0.0'
 uv pip install "${UV_ARGS[@]}" ml_collections
-uv pip install "${UV_ARGS[@]}" --ignore-installed PyYAML
+uv pip install "${UV_ARGS[@]}" --reinstall-package PyYAML PyYAML
 uv pip install "${UV_ARGS[@]}" 'clu==0.0.9'
 # Note that protobuf installed with pip needs to be 3.13 because of the pyclif
 # version we're using. This is currently inconsistent with C++ protobuf version
@@ -122,7 +122,7 @@ uv pip install "${UV_ARGS[@]}" 'argparse==1.4.0'
 # ERROR: pyasn1-modules 0.2.7 has requirement pyasn1<0.5.0,>=0.4.6, but you'll have pyasn1 0.1.9 which is incompatible.
 uv pip install "${UV_ARGS[@]}" 'pyasn1<0.5.0,>=0.4.6'
 uv pip install "${UV_ARGS[@]}" 'requests>=2.18'
-uv pip install "${UV_ARGS[@]}" --ignore-installed 'oauth2client>=4.0.0'
+uv pip install "${UV_ARGS[@]}" --reinstall-package oauth2client 'oauth2client>=4.0.0'
 uv pip install "${UV_ARGS[@]}" 'crcmod>=1.7'
 uv pip install "${UV_ARGS[@]}" 'six>=1.11.0'
 uv pip install "${UV_ARGS[@]}" joblib
@@ -134,13 +134,13 @@ uv pip install "${UV_ARGS[@]}" 'pandas==1.3.4'
 # See https://github.com/altair-viz/altair/issues/2496
 # If Altair version is updated below, the jsonschema version
 # should also be updated accordingly.
-uv pip install "${UV_ARGS[@]}" --ignore-installed 'jsonschema==3.2.0'
+uv pip install "${UV_ARGS[@]}" --reinstall-package jsonschema 'jsonschema==3.2.0'
 uv pip install "${UV_ARGS[@]}" 'altair==4.1.0'
 uv pip install "${UV_ARGS[@]}" 'Pillow==9.5.0'
 uv pip install "${UV_ARGS[@]}" 'ipython==8.22.2'
 uv pip install "${UV_ARGS[@]}" 'pysam==0.20.0'
 uv pip install "${UV_ARGS[@]}" 'scikit-learn==1.0.2'
-uv pip install "${UV_ARGS[@]}" --ignore-installed 'setuptools==61.0.0'
+uv pip install "${UV_ARGS[@]}" --reinstall-package setuptools 'setuptools==61.0.0'
 # This is to avoid ERROR: No matching distribution found for opencv-python-headless==4.5.2.52.
 # TODO: Make this the same as ${DV_GCP_OPTIMIZED_TF_WHL_VERSION}" later
 # tf-models-official depends on tensorflow-text which has no aarch64 wheel.
@@ -195,7 +195,7 @@ fi
 # ImportError: cannot import name 'soft_unicode' from 'markupsafe'.
 # So, forcing a downgrade. This isn't the best solution, but we need it to get
 # our tests pass.
-uv pip install "${UV_ARGS[@]}" --ignore-installed 'markupsafe==2.0.1'
+uv pip install "${UV_ARGS[@]}" --reinstall-package markupsafe 'markupsafe==2.0.1'
 
 ################################################################################
 # CUDA
