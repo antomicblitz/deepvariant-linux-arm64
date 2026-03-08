@@ -7,6 +7,11 @@
 
 source "$(dirname "$0")/settings.sh"
 
+# Reason: uv venv uses lib/pythonX.Y/site-packages, not dist-packages
+if [[ -n "${VIRTUAL_ENV:-}" ]]; then
+  export PYTHON_LIB_PATH="${VIRTUAL_ENV}/lib/python${PYTHON_VERSION}/site-packages"
+fi
+
 # Detect architecture
 ARCH=$(uname -m)
 
