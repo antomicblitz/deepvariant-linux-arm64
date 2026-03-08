@@ -102,11 +102,12 @@ a Creative Commons Attribution 4.0 International License (CC BY
   <p>ARM64 server adoption is accelerating in genomics, driven by
   platforms such as AWS Graviton, Oracle Ampere, and Hetzner Cloud ARM.
   Yet DeepVariant’s build system assumes x86 (SSE4/AVX) throughout, and
-  an upstream request for ARM64 support (Issue #834) has remained
-  unresolved since 2024. The only existing ARM64 option is Sentieon
-  DNAscope
-  (<xref alt="Freed et al., 2017" rid="ref-Freed2022" ref-type="bibr">Freed
-  et al., 2017</xref>) — a proprietary tool requiring a commercial
+  an upstream request for ARM64 support
+  (<xref alt="Google DeepVariant Contributors, 2024" rid="ref-DeepVariantIssue834" ref-type="bibr">Google
+  DeepVariant Contributors, 2024</xref>) has remained unresolved since
+  2024. The only existing ARM64 option is Sentieon DNAscope
+  (<xref alt="Freed et al., 2022" rid="ref-Freed2022" ref-type="bibr">Freed
+  et al., 2022</xref>) — a proprietary tool requiring a commercial
   license, which limits access for academic and resource-constrained
   laboratories.</p>
   <p>This fork addresses the gap by patching the Bazel build system,
@@ -327,7 +328,7 @@ a Creative Commons Attribution 4.0 International License (CC BY
       </person-group>
       <article-title>The Sentieon genomics tools – a fast and accurate solution to variant calling from next-generation sequence data</article-title>
       <source>bioRxiv</source>
-      <year iso-8601-date="2017">2017</year>
+      <year iso-8601-date="2022">2022</year>
       <pub-id pub-id-type="doi">10.1101/115717</pub-id>
     </element-citation>
   </ref>
@@ -418,6 +419,16 @@ a Creative Commons Attribution 4.0 International License (CC BY
       <pub-id pub-id-type="doi">10.1038/s41587-019-0074-6</pub-id>
       <fpage>561</fpage>
       <lpage>566</lpage>
+    </element-citation>
+  </ref>
+  <ref id="ref-DeepVariantIssue834">
+    <element-citation>
+      <person-group person-group-type="author">
+        <string-name>Google DeepVariant Contributors</string-name>
+      </person-group>
+      <article-title>Issue #834: ARM64 support request</article-title>
+      <year iso-8601-date="2024">2024</year>
+      <uri>https://github.com/google/deepvariant/issues/834</uri>
     </element-citation>
   </ref>
 </ref-list>
