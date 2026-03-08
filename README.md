@@ -17,9 +17,12 @@ At [UK Biobank](https://doi.org/10.1038/s41586-025-09272-9) scale (490,640 genom
 
 ## Quick Start
 
-**Requirements:** ARM64 Linux + Docker.
+**Requirements:** ARM64 Linux + Docker. Full WGS needs ~2 GB RAM per CPU core.
 
 ```bash
+# If your machine has less than 32 GB RAM, add swap first (one-time, auto-sized):
+curl -fsSL https://raw.githubusercontent.com/antomicblitz/deepvariant-linux-arm64/main/scripts/setup_swap.sh | sudo bash
+
 docker pull ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.6
 
 docker run \
