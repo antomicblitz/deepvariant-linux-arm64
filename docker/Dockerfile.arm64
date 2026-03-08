@@ -27,12 +27,13 @@ ARG VERSION
 
 RUN apt-get update -qq && \
     apt-get install -qq -y --no-install-recommends \
-        python3 python3-venv wget ca-certificates && \
+        wget ca-certificates && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Reason: tf2onnx needs numpy+onnx+tf; venv required on Ubuntu 24.04 (EXTERNALLY-MANAGED)
-RUN uv venv /opt/venv && uv pip install --python /opt/venv/bin/python --no-cache tf2onnx onnxruntime
+# Reason: uv manages Python 3.10 — no deadsnakes PPA needed in this stage
+RUN uv venv /opt/venv --python 3.10 && \
+    uv pip install --python /opt/venv/bin/python --no-cache tf2onnx onnxruntime
 ENV PATH="/opt/venv/bin:$PATH"
 
 WORKDIR /opt
