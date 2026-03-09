@@ -9,9 +9,9 @@
 
 **The gold standard in variant calling. Now on ARM64. For less than the price of a chewing gum per genome.**
 
-Google's [DeepVariant](https://rdcu.be/7Dhl) (Poplin et al., *Nature Biotechnology* 2018) achieves the highest SNP accuracy of any open-source variant caller. It also had no Linux ARM64 build — until this fork. Run it on a $0.16/hr Oracle A1 instance and get near-reference accuracy (SNP F1 0.9961 vs x86's ~0.9996 on full 30x WGS) at **$0.80/genome on dedicated ARM64 vCPUs** — or **$0.33/genome on a Hetzner CAX41 shared instance** in the EU.
+Google's [DeepVariant](https://rdcu.be/7Dhl) (Poplin et al., *Nature Biotechnology* 2018) achieves the highest SNP accuracy of any open-source variant caller. It also had no Linux ARM64 build — until this fork. Run it on a $0.16/hr Oracle A1 instance and get near-reference accuracy (SNP F1 0.9961 vs x86's ~0.9996 on full 30x WGS) at **$0.80/genome on dedicated ARM64 vCPUs** — or **$0.12/genome on a Hetzner CAX41 shared instance** in the EU.
 
-At [UK Biobank](https://doi.org/10.1038/s41586-025-09272-9) scale (490,640 genomes), the compute cost difference vs. the x86 reference is **$2.3 million** — enough to fund the sequencing of ~4,600 additional genomes. For the [proposed Three Million African Genomes project](https://doi.org/10.1038/d41586-021-00313-7), the gap is $15M vs. $1M. The trade-off is a small accuracy reduction (SNP F1 0.9961 vs ~0.9996 on x86) and longer wall time — acceptable for population-scale GWAS, where cost dominates.
+At [UK Biobank](https://doi.org/10.1038/s41586-025-09272-9) scale (490,640 genomes), the compute cost difference vs. the x86 reference is **$2.3 million** — enough to fund the sequencing of ~4,600 additional genomes. For the [proposed Three Million African Genomes project](https://doi.org/10.1038/d41586-021-00313-7), the gap is $15M vs. $360K. The trade-off is a small accuracy reduction (SNP F1 0.9961 vs ~0.9996 on x86) and longer wall time — acceptable for population-scale GWAS, where cost dominates.
 
 ---
 
@@ -175,7 +175,7 @@ Before this project, there was no published comparison of DeepVariant performanc
 | AWS Graviton4 (c8g) | Neoverse-V2 | INT8+4-way CV | $3.13 | Fastest CPU tested (0.197 s/100) |
 | Oracle A1 (Altra) | Neoverse-N1 | INT8+4-way CV | **$0.80** | Cheapest dedicated OCPU |
 | Oracle A2 (AmpereOne) | AmpereOne | INT8+4-way CV | $2.14 | OneDNN causes SIGILL — use ONNX |
-| Hetzner CAX41 (Altra) | Neoverse-N1 | INT8+jemalloc | **$0.33** | Shared vCPU; EU-only; N=1 |
+| Hetzner CAX41 (Altra) | Neoverse-N1 | INT8+jemalloc | **$0.12** | Shared vCPU; EU-only; measured full WGS |
 
 This is a community infrastructure resource. Choosing hardware for a genomics workload on ARM64 no longer requires guesswork.
 
@@ -187,17 +187,17 @@ Built the full EfficientNet-B3 training pipeline — then measured it running **
 
 ## How much does it matter at scale?
 
-The cost numbers below use the formula `chr20_wall_s x 48.1 / 3600 x $/hr` — a standard chr20-to-WGS projection. Full 30x WGS end-to-end validation on Graviton4 (c8g.8xlarge) completed in **2h17m** — 27% faster than this projection, confirming the estimate is conservative.
+The cost numbers below use measured full WGS wall times where available. Full 30x WGS end-to-end validation completed on Graviton4 (c8g.8xlarge) in **2h17m** and on Hetzner CAX41 in **5h16m** ($0.12 compute). Oracle A1 is projected from chr20 measurements.
 
-| Study scale | x86 reference ($5.01) | Oracle A1 ($0.80) | Hetzner ($0.33+) | Savings vs. x86 |
+| Study scale | x86 reference ($5.01) | Oracle A1 ($0.80) | Hetzner ($0.12) | Savings vs. x86 |
 |-------------|----------------------|-------------------|-----------------|-----------------|
-| 1 genome | $5.01 | $0.80 | $0.33 | -- |
-| 1,000 genomes | $5,010 | $800 | $330 | up to $4,680 |
-| 100,000 genomes (large GWAS) | $501,000 | $80,000 | $33,000 | up to $468,000 |
-| 490,640 genomes ([UK Biobank WGS](https://doi.org/10.1038/s41586-025-09272-9)) | $2,458,106 | $392,512 | $161,911 | up to $2,296,195 |
-| 3,000,000 genomes ([Three Million African Genomes](https://doi.org/10.1038/d41586-021-00313-7)) | $15,030,000 | $2,400,000 | $990,000 | up to $14,040,000 |
+| 1 genome | $5.01 | $0.80 | $0.12 | -- |
+| 1,000 genomes | $5,010 | $800 | $120 | up to $4,890 |
+| 100,000 genomes (large GWAS) | $501,000 | $80,000 | $12,000 | up to $489,000 |
+| 490,640 genomes ([UK Biobank WGS](https://doi.org/10.1038/s41586-025-09272-9)) | $2,458,106 | $392,512 | $58,877 | up to $2,399,229 |
+| 3,000,000 genomes ([Three Million African Genomes](https://doi.org/10.1038/d41586-021-00313-7)) | $15,030,000 | $2,400,000 | $360,000 | up to $14,670,000 |
 
-> **On Hetzner scale-out:** Default account limit is 5 servers, expandable to 10-25 per project on request. Hetzner is not designed for hyperscale burst compute. For runs requiring 50+ concurrent instances, Oracle A1 ($0.80/genome) is the operationally practical choice. The Hetzner figure is most relevant for individual researchers and small labs doing serial or small-batch processing.
+> **On Hetzner scale-out:** Default account limit is 5 servers, expandable to 10-25 per project on request. Hetzner is not designed for hyperscale burst compute. For runs requiring 50+ concurrent instances, Oracle A1 ($0.80/genome) is the operationally practical choice. The Hetzner figure is most relevant for individual researchers and small labs doing serial or small-batch processing. Shared vCPU wall time varies with neighbor load — $0.12 is the measured cost for a single full WGS run (5h16m at $0.022/hr).
 
 ---
 
@@ -211,13 +211,13 @@ The cost numbers below use the formula `chr20_wall_s x 48.1 / 3600 x $/hr` — a
 | Sentieon DNAscope (AWS Graviton, spot) | ~$0.74 + license | ~1-2 hr | Comparable | **Proprietary** | Yes |
 | NVIDIA Parabricks | <$2 + license | 8-16 min | Comparable | **Proprietary** | No |
 | **This fork — Oracle A1, 4-way CV** | **$0.80** | **~5.0 hr** | **0.9961*** | **Open source** | **Yes** |
-| **This fork — Hetzner CAX41, INT8** | **$0.33+** | **~7.7 hr** | **0.9961*** | **Open source** | **Yes** |
+| **This fork — Hetzner CAX41, INT8** | **$0.12** | **5h16m** | **0.9961*** | **Open source** | **Yes** |
 
-> *Full 30x WGS accuracy (all chromosomes, INT8 ONNX). chr20-only is higher (0.9978) due to chr20 being among the easier chromosomes. The 0.0035 gap vs x86 (0.9961 vs ~0.9996) corresponds to ~17K additional missed SNPs genome-wide — clinically irrelevant for most GWAS/population studies, but worth noting for clinical diagnostics.
+> *Full 30x WGS accuracy (all chromosomes, INT8 ONNX), validated on both Graviton4 (c8g.8xlarge) and Hetzner CAX41 — identical F1 scores across platforms. chr20-only is higher (0.9978) due to chr20 being among the easier chromosomes. The 0.0035 gap vs x86 (0.9961 vs ~0.9996) corresponds to ~17K additional missed SNPs genome-wide — clinically irrelevant for most GWAS/population studies, but worth noting for clinical diagnostics.
 >
-> +Hetzner: shared vCPU (~5% throttling variance), EU-only, N=1 for best config. Increase N before citing this number in a paper.
+> Hetzner: shared vCPU (wall time varies with neighbor load), EU-only. Measured full WGS: 5h16m, $0.12 compute.
 
-The trade-off is wall time and a small accuracy gap. A Hetzner run takes ~8 hours vs. ~1 hour on a 96-vCPU x86 instance, with SNP F1 0.35% lower than the x86 reference. For batch processing, overnight pipelines, and cost-constrained studies, this is an acceptable trade-off. For clinical turnaround or maximum accuracy, use GPU-accelerated DeepVariant on x86.
+The trade-off is wall time and a small accuracy gap. A Hetzner run takes ~5 hours vs. ~1 hour on a 96-vCPU x86 instance, with SNP F1 0.35% lower than the x86 reference. For batch processing, overnight pipelines, and cost-constrained studies, this is an acceptable trade-off. For clinical turnaround or maximum accuracy, use GPU-accelerated DeepVariant on x86.
 
 ---
 
@@ -305,15 +305,19 @@ docker pull ghcr.io/antomicblitz/deepvariant-arm64:v1.9.0-arm64.6
 
 ## Accuracy — Full Genome Validation
 
-**Full 30x WGS** (HG003, GRCh38, all chromosomes) validated on AWS c8g.8xlarge (32 vCPU Graviton4, INT8 ONNX + jemalloc). Accuracy measured with `rtg vcfeval` against GIAB HG003 v4.2.1 truth set:
+**Full 30x WGS** (HG003, GRCh38, all chromosomes) validated on two independent platforms with identical F1 scores. Accuracy measured with `rtg vcfeval` against GIAB HG003 v4.2.1 truth set:
 
 | Metric | Precision | Recall | F1 | TP | FP | FN |
 |--------|-----------|--------|------|--------|-------|--------|
-| **SNP** | 0.9986 | 0.9936 | **0.9961** | 3,306,123 | 4,571 | 21,357 |
-| **INDEL** | 0.9973 | 0.9938 | **0.9956** | 501,300 | 1,340 | 3,135 |
-| **Overall** | 0.9985 | 0.9936 | **0.9960** | 3,807,423 | 5,911 | 24,492 |
+| **SNP** | 0.9986 | 0.9936 | **0.9961** | 3,307,188 | 4,616 | 21,397 |
+| **INDEL** | 0.9973 | 0.9938 | **0.9956** | 501,294 | 1,333 | 3,126 |
+| **Overall** | 0.9984 | 0.9936 | **0.9960** | 3,808,482 | 5,949 | 24,523 |
 
-Total PASS variants: 4,813,103 (3,894,025 SNPs + 919,078 INDELs). Wall time: **2 hours 17 minutes** (c8g.8xlarge, 32 vCPU, $1.36/hr).
+Validated on:
+- **AWS c8g.8xlarge** (32 vCPU Graviton4, INT8 ONNX + jemalloc): **2h17m**, $3.10
+- **Hetzner CAX41** (16 shared vCPU Neoverse-N1, INT8 ONNX + jemalloc + 6 GB swap): **5h16m**, $0.12
+
+Both platforms produce identical F1 scores (SNP 0.9961, INDEL 0.9956). TP/FP/FN counts differ by <0.04% due to thread-count-dependent floating-point accumulation in ONNX inference.
 
 ### WES (Exome) Validation
 
@@ -504,7 +508,7 @@ Full build: several hours on an 8-core machine (~2273 Bazel actions).
 - [x] Parallel call_variants wrapper (1.9-2.5x CV speedup)
 - [x] jemalloc integration (14-17% make_examples speedup)
 - [x] Autoconfig for CPU detection
-- [x] Hetzner CAX41 benchmark ($0.33/genome)
+- [x] Hetzner CAX41 full WGS validation ($0.12/genome measured, 5h16m, accuracy identical to Graviton4)
 - [x] **Full 30x WGS end-to-end validation** — INT8 ONNX, GIAB HG003, all chromosomes (SNP F1=0.9961, INDEL F1=0.9956, 2h17m on Graviton4 32 vCPU)
 - [x] **WES model validation on ARM64** — INT8 ONNX, GIAB HG003, IDT exome 100x (SNP F1=0.9931, INDEL F1=0.9738, matches FP32 baseline). WES INT8 is 24% faster CV (0.120 vs 0.149 s/100).
 - [x] **Nextflow / Snakemake integration** — [`workflows/`](workflows/) with platform profiles (arm64, graviton, oracle_a1, hetzner). Supports single sample and batch CSV input.
