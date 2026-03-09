@@ -107,10 +107,11 @@ export USE_DEFAULT_PYTHON_LIB_PATH=1
 export DV_COPT_FLAGS="--copt=-march=corei7 --copt=-Wno-sign-compare --copt=-Wno-write-strings --experimental_build_setting_api --java_runtime_version=remotejdk_11"
 
 # Reason: Docker runs as root — sudo is a no-op that drops env vars (VIRTUAL_ENV, PATH).
-# SUDO_H absorbs the `-H` flag (sets HOME) used with apt-get calls.
+# `env` passes through env-var prefixes (e.g. DEBIAN_FRONTEND=noninteractive) and
+# flags like -H are absorbed harmlessly, so all existing call patterns work unchanged.
 if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
-  SUDO=""
-  SUDO_H=""
+  SUDO="env"
+  SUDO_H="env"
 else
   SUDO="sudo"
   SUDO_H="sudo -H"
