@@ -31,8 +31,6 @@ env:
   DOCKER_IMAGE: deepvariant-arm64
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  # Reason: tag used for COPY --from in runtime Dockerfile
-  BUILDER_TAG: base-builder-v1.9.0
 
 jobs:
   # Rebuild the base builder image from source (Bazel compilation).
@@ -53,7 +51,10 @@ jobs:
         id: version
         run: |
           version=$(grep '^current_version' .bumpversion.toml | sed 's/.*= *"//;s/"//')
+          # Reason: upstream_version strips -arm64.N suffix for builder tag
+          upstream_version=$(echo "$version" | sed 's/-.*//')
           echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+          echo "builder_tag=base-builder-v${upstream_version}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -72,7 +73,7 @@ jobs:
           file: docker/Dockerfile.arm64.builder
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.BUILDER_TAG }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.builder_tag }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:builder-${{ steps.version.outputs.tag }}
           cache-from: type=gha,scope=builder
           cache-to: type=gha,mode=max,scope=builder
@@ -96,7 +97,9 @@ jobs:
         id: version
         run: |
           version=$(grep '^current_version' .bumpversion.toml | sed 's/.*= *"//;s/"//')
+          upstream_version=$(echo "$version" | sed 's/-.*//')
           echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+          echo "builder_tag=base-builder-v${upstream_version}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -110,8 +113,8 @@ jobs:
 
       - name: Check base builder image exists
         run: |
-          if ! docker manifest inspect "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.BUILDER_TAG }}" > /dev/null 2>&1; then
-            echo "::error::Base builder image ${{ env.BUILDER_TAG }} not found. Run workflow_dispatch with rebuild_builder=true first."
+          if ! docker manifest inspect "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.builder_tag }}" > /dev/null 2>&1; then
+            echo "::error::Base builder image ${{ steps.version.outputs.builder_tag }} not found. Run workflow_dispatch with rebuild_builder=true first."
             exit 1
           fi
 
@@ -135,7 +138,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            BUILDER_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.BUILDER_TAG }}
+            BUILDER_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.builder_tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
