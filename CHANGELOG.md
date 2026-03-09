@@ -5,6 +5,12 @@ Upstream compatibility: google/deepvariant v1.9.0
 
 ## [Unreleased]
 
+### Fixed
+- `--ignore-installed` → `--reinstall-package` in Dockerfiles and `run-prereq.sh` for uv 0.10
+- `get-pip.py` bootstrap → `uv pip install` in `build_absl.sh` (PEP 668 on Ubuntu 24.04)
+- `uv pip install --python` targeting venv explicitly in `build_absl.sh` sudo context
+- `PYTHON_LIB_PATH` override in `settings_arm64.sh` for uv venv `site-packages`
+
 ## [v1.9.0-arm64.6] — 2026-03-08
 
 ### Added
