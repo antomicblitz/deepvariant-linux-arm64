@@ -142,7 +142,7 @@ jobs:
   test-accuracy:
     name: Accuracy Validation (chr20)
     needs: build-arm64
-    runs-on: [self-hosted, arm64, linux]
+    runs-on: ubuntu-24.04-arm
     if: github.event_name != 'pull_request'
     timeout-minutes: 120
     steps:
