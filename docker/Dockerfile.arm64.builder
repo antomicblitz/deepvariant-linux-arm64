@@ -6,8 +6,8 @@
 #
 # Build and push the base builder image:
 #   docker build -f docker/Dockerfile.arm64.builder \
-#     -t ghcr.io/qte77/deepvariant-linux-arm64:base-builder-v1.9.0 .
-#   docker push ghcr.io/qte77/deepvariant-linux-arm64:base-builder-v1.9.0
+#     -t ghcr.io/antomicblitz/deepvariant-arm64:base-builder-v1.9.0 .
+#   docker push ghcr.io/antomicblitz/deepvariant-arm64:base-builder-v1.9.0
 #
 # Rebuild only when: C++ source, Bazel config, TF version, or build scripts change.
 # The runtime Dockerfile (Dockerfile.arm64) references this image by default.
@@ -18,8 +18,8 @@ ARG DV_GPU_BUILD=0
 ARG VERSION=1.9.0
 
 FROM ${FROM_IMAGE} AS builder
-LABEL maintainer="https://github.com/qte77/deepvariant-linux-arm64/issues" \
-      org.opencontainers.image.source="https://github.com/qte77/deepvariant-linux-arm64"
+LABEL maintainer="https://github.com/antomicblitz/deepvariant-linux-arm64/issues" \
+      org.opencontainers.image.source="https://github.com/antomicblitz/deepvariant-linux-arm64"
 
 ARG DV_GPU_BUILD
 ARG PYTHON_VERSION

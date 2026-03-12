@@ -82,10 +82,11 @@ note_build_stage "Install python3 packaging infrastructure"
 # "error: command 'x86_64-linux-gnu-gcc' failed: No such file or directory"
 $SUDO_H apt-get install "${APT_ARGS[@]}" "gcc"
 
-# uv is installed via COPY --from in Dockerfiles; verify it's available
+# uv is installed via COPY --from in Dockerfiles; auto-install if missing (bare-metal builds)
 if ! command -v uv &>/dev/null; then
-  echo "ERROR: uv not found. Install via Dockerfile: COPY --from=ghcr.io/astral-sh/uv:0.10 /uv /usr/local/bin/uv"
-  exit 1
+  echo "INFO: uv not found, installing..."
+  curl -LsSf https://astral.sh/uv/0.10/install.sh | sh
+  export PATH="$HOME/.local/bin:$PATH"
 fi
 
 echo "$(python3 --version)"

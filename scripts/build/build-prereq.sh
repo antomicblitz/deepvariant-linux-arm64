@@ -41,7 +41,7 @@ source "$(dirname "$0")/settings.sh"
 
 note_build_stage "Install the runtime packages"
 
-./scripts/build/run-prereq.sh
+"$(dirname "$0")/run-prereq.sh"
 
 note_build_stage "Update package list"
 

@@ -51,6 +51,9 @@ Upstream compatibility: google/deepvariant v1.9.0
 - `Dockerfile.arm64.runtime`: superseded by `Dockerfile.arm64` with BUILDER_IMAGE arg
 - `Dockerfile.arm64`: removed inline builder-local fallback (use .builder file instead)
 
+### Breaking Changes
+- Root `__init__.py` removed — `pip install -e .` no longer works. Use the Bazel build path or Docker images instead.
+
 ### Fixed
 - `call_variants.py`: ORT version parse crash on `.post1` suffixes
   (e.g. `1.17.0.post1` caused `int()` ValueError)
@@ -72,7 +75,7 @@ Upstream compatibility: google/deepvariant v1.9.0
   pytest + complexipy config
 - `Makefile`: setup_dev, lint, type_check, test, validate, docker_build,
   benchmark (all via uv)
-- `.claude/settings.json`: marketplace plugins
+- `.devcontainer/devcontainer.json`: VS Code devcontainer config
 - `.devcontainer/devcontainer.json`: Python 3.10, docker-in-docker, uv + dev deps
 - `.github/workflows/codeql.yaml`: CodeQL Python code scanning on push/PR/schedule
 - `.github/dependabot.yaml`: weekly pip dependency updates

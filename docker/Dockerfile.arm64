@@ -14,7 +14,7 @@
 # NOTE: Ubuntu 24.04 required — GCC 13+ needed for TF 2.13.1 compilation.
 # Python 3.10 managed by uv (required by TF 2.13.1).
 
-ARG BUILDER_IMAGE=ghcr.io/qte77/deepvariant-linux-arm64:base-builder-v1.9.0
+ARG BUILDER_IMAGE=ghcr.io/antomicblitz/deepvariant-arm64:base-builder-v1.9.0
 ARG FROM_IMAGE=arm64v8/ubuntu:24.04
 ARG VERSION=1.9.0
 # Optional: URL to pre-quantized INT8 WGS model. Empty = skip download.
@@ -102,7 +102,7 @@ RUN if [ -n "${INT8_MODEL_URL}" ]; then \
 
 # --- Stage 3: runtime --------------------------------------------------------
 FROM ${FROM_IMAGE}
-LABEL org.opencontainers.image.source="https://github.com/qte77/deepvariant-linux-arm64"
+LABEL org.opencontainers.image.source="https://github.com/antomicblitz/deepvariant-linux-arm64"
 ARG VERSION
 ENV VERSION=${VERSION}
 ENV PATH="$PATH:/opt/deepvariant/bin"
