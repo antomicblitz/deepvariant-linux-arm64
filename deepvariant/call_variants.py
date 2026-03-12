@@ -903,7 +903,11 @@ def call_variants(
     if example_shape is None:
       example_shape = dv_utils.example_image_shape(first_example)
     import onnxruntime as ort
-    if tuple(int(x) for x in ort.__version__.split('.')[:2]) < (1, 17):
+    # Parse version safely — handles suffixes like "1.17.0.post1".
+    _ort_ver = tuple(
+        int(p) for p in ort.__version__.split('.')[:2] if p.isdigit()
+    )
+    if len(_ort_ver) < 2 or _ort_ver < (1, 17):
       logging.warning(
           'ONNX Runtime %s may lack ARM64 INT8 MLAS kernels (need >= 1.17). '
           'INT8 models may fall back to slow scalar reference implementation.',
@@ -916,6 +920,9 @@ def call_variants(
     intra = onnx_intra_op_threads if onnx_intra_op_threads > 0 else multiprocessing.cpu_count()
     sess_options.intra_op_num_threads = intra
     sess_options.inter_op_num_threads = onnx_inter_op_threads
+    # Enable extended graph optimizations (Conv+BN fusion, GEMM+Activation
+    # fusion, constant folding). Default is ORT_ENABLE_BASIC.
+    sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
     logging.info('ONNX threads: intra_op=%d, inter_op=%d', intra, onnx_inter_op_threads)
     # Enable BF16 fast math on Graviton3+ (Neoverse V1/V2 with BF16 support).
     # No effect on hardware without BF16 (e.g. Neoverse-N1).
@@ -992,8 +999,11 @@ def call_variants(
     # These elements per iteration are read from the `get_dataset` function,
     # specifically the `_parse_example` function within it.
     if use_onnx:
+      # Ensure contiguous memory layout for ORT — non-contiguous tensors
+      # (e.g. from slicing) would cause a silent per-batch copy.
       predictions = onnx_session.run(
-          None, {onnx_input_name: images_in_batch.numpy()})[0]
+          None, {onnx_input_name: np.ascontiguousarray(
+              images_in_batch.numpy())})[0]
       # INT8 quantized models may produce probabilities that don't sum to
       # exactly 1.0 due to quantization error. Renormalize to prevent
       # round_gls from rejecting valid predictions.

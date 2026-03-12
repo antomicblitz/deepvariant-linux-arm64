@@ -58,7 +58,7 @@ For WES (HG003 IDT exome 100x), INT8 matches the FP32 baseline (SNP F1 0.9931 vs
 
 # Documented dead ends
 
-An EfficientNet-B3 model swap was built end-to-end but ran 3$\times$ slower than InceptionV3 on ARM64 CPUs despite 3.2$\times$ fewer FLOPs. Depthwise separable convolutions and squeeze-and-excitation blocks have poor GEMM density on CPU NEON hardware, negating their theoretical FLOP advantage. Full details are provided in `TRAINING_EXPERIMENT.md`.
+An EfficientNet-B3 model swap was built end-to-end but ran 3$\times$ slower than InceptionV3 on ARM64 CPUs despite 3.2$\times$ fewer FLOPs. Depthwise separable convolutions and squeeze-and-excitation blocks have poor GEMM density on CPU NEON hardware, negating their theoretical FLOP advantage. Full details are provided in `docs/TRAINING_EXPERIMENT.md`.
 
 # Software availability and reproducibility
 

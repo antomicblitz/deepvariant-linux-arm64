@@ -33,7 +33,7 @@ set -euo pipefail
 echo ========== This script is only maintained for Ubuntu 22.04.
 echo ========== Load config settings.
 
-source settings.sh
+source "$(dirname "$0")/settings.sh"
 
 ################################################################################
 # Misc. setup
@@ -41,17 +41,17 @@ source settings.sh
 
 note_build_stage "Install the runtime packages"
 
-./run-prereq.sh
+./scripts/build/run-prereq.sh
 
 note_build_stage "Update package list"
 
-sudo -H apt-get -qq -y update
+$SUDO_H apt-get -qq -y update
 
 note_build_stage "build-prereq.sh: Install development packages"
 
 # Need to wait for dpkg lock (see internal)
 wait_for_dpkg_lock
-sudo -H NEEDRESTART_MODE=a apt-get -qq -y install pkg-config zip g++ zlib1g-dev unzip curl git wget > /dev/null
+$SUDO_H NEEDRESTART_MODE=a apt-get -qq -y install pkg-config zip g++ zlib1g-dev unzip curl git wget > /dev/null
 
 
 ################################################################################
@@ -83,7 +83,7 @@ function ensure_wanted_bazel_version {
 ensure_wanted_bazel_version "${DV_BAZEL_VERSION}"
 
 # This is used for building examples_from_stream.so later.
-time sudo ./tools/build_absl.sh
+time $SUDO ./tools/build_absl.sh
 
 ################################################################################
 # TensorFlow

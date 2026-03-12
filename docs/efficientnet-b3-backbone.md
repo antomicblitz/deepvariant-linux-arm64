@@ -32,4 +32,4 @@ This generalizes to ALL "efficient" CNN architectures (MobileNetV2, MnasNet, etc
 - `deepvariant/keras_modeling.py` — model architecture
 - `scripts/train_efficientnet_b3.sh` — training pipeline
 - `scripts/export_efficientnet_b3.py` — checkpoint → SavedModel export
-- `TRAINING_EXPERIMENT.md` — full experiment results and analysis
+- `docs/TRAINING_EXPERIMENT.md` — full experiment results and analysis

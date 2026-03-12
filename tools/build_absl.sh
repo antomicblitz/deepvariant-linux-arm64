@@ -83,17 +83,8 @@ make install
 cd ../..
 rm -rf abseil-cpp
 
-curl -o get-pip.py https://bootstrap.pypa.io/get-pip.py
-python3 get-pip.py --force-reinstall --user
-rm -f get-pip.py
-
-export PATH="$HOME/.local/bin":$PATH
-echo "$(pip3 --version)"
-
 # Install python runtime and test dependencies
-pip3 install \
-    absl-py \
-    parameterized
+uv pip install absl-py parameterized
 
 # On GPU machines, this might be necessary because of the reason mentioned in:
 # https://stackoverflow.com/a/74605488

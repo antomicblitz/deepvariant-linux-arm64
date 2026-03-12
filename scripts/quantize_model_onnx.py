@@ -46,7 +46,7 @@ def _check_ort_version():
 def quantize(input_path, output_path):
     """Apply dynamic INT8 quantization to an ONNX model."""
     _check_ort_version()
-    from onnxruntime.quantization import quantize_dynamic, QuantType
+    from onnxruntime.quantization import QuantType, quantize_dynamic
 
     print(f'Quantizing {input_path} -> {output_path}')
     quantize_dynamic(
@@ -77,12 +77,13 @@ def load_real_images(tfrecord_dir, saved_model_dir, num_samples=500):
     Returns:
         List of numpy arrays, each shape (1, H, W, C) in float32 range [-1, 1].
     """
+    # Lazy imports — only needed when using real data validation.
     import json
+
     import numpy as np
 
-    # Lazy TF import — only needed when using real data validation.
     os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '2')
-    import tensorflow as tf
+    import tensorflow as tf  # noqa: E402
 
     # Get input shape from example_info.json
     input_shape = [100, 221, 7]
@@ -183,7 +184,7 @@ def validate(onnx_fp32_path, onnx_int8_path, saved_model_dir=None,
 
     max_diff_overall = 0.0
     diffs = []
-    for i, img in enumerate(images):
+    for _i, img in enumerate(images):
         fp32_out = sess_fp32.run(None, {input_name_fp32: img})[0]
         int8_out = sess_int8.run(None, {input_name_int8: img})[0]
 

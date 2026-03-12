@@ -91,7 +91,7 @@ The official Dockerfile hardcodes x86-specific paths (`bazel-out/k8-opt/bin/`). 
 **Key changes needed:**
 
 ```
-# settings.sh already handles aarch64 detection [cite:118]:
+# scripts/build/settings.sh already handles aarch64 detection [cite:118]:
 # - CUDNN_INSTALL_PATH="/usr/lib/aarch64-linux-gnu" for aarch64
 # - DV_COPT_FLAGS exclude -march=corei7 for non-x86
 
@@ -110,7 +110,7 @@ RUN pip install tensorflow-cpu-aws-graviton==2.14.1  # or official tensorflow-aa
 
 **Build tasks:**
 
-- [ ] Create `Dockerfile.arm64` based on upstream Dockerfile
+- [ ] Create `docker/Dockerfile.arm64` based on upstream Dockerfile
 - [ ] Port macOS Bazel patches to Linux ARM64 context (remove Apple-specific: zlib `TARGET_OS_MAC` guard not needed on Linux, no Boost Homebrew paths)
 - [ ] Set `--config=mkl_aarch64_threadpool` for OneDNN+ACL backend[7]
 - [ ] Cross-compile or native-build on Graviton instance (native preferred — 64+ cores makes build fast)
@@ -530,7 +530,7 @@ Arm's 2026 Mali GPUs with neural technology will support ExecuTorch via the VGF 
 ### Docker Multi-Architecture Build
 
 ```dockerfile
-# Dockerfile.arm64
+# docker/Dockerfile.arm64
 FROM arm64v8/ubuntu:22.04 AS builder
 
 # Install Bazel 5.3.0 for aarch64
@@ -560,7 +560,7 @@ jobs:
         with:
           platforms: arm64
       - name: Build ARM64 Docker image
-        run: docker buildx build --platform linux/arm64 -f Dockerfile.arm64 .
+        run: docker buildx build --platform linux/arm64 -f docker/Dockerfile.arm64 .
       
   test-accuracy:
     needs: build-arm64
@@ -742,7 +742,7 @@ These are common issues encountered when running benchmarks on cloud ARM64 insta
 | **`/data/flags/` or `/data/output/` missing on fresh instance** | Benchmark scripts crash at `mkdir -p` if parent `/data/` is root-owned | Create data dirs with `sudo mkdir -p /data/{flags,output,...} && sudo chown -R ubuntu:ubuntu /data` |
 | **GCS reference download fails with `curl -sO`** | Returns XML error page instead of file (redirect issue) | Use `wget -q` instead of `curl -sO` for GCS public data |
 | **AWS vCPU limit blocks larger instances** | Cannot launch c7g.8xlarge/c8g.8xlarge without quota increase (resolved — quota increased to 32) | Request via AWS Console (IAM user needs `servicequotas:RequestServiceQuotaIncrease` permission for CLI) |
-| **`--memory` Docker flag: do NOT hardcode 28g** | Hardcoding `--memory=28g` OOM-kills make_examples on machines with <32 GB RAM (e.g. Hetzner CAX41 has 30 GB). Full WGS with 16 shards + TF small model peaks at ~28 GB. | Omit `--memory` entirely for ONNX backend (allocates ~3 GB, not greedy). Only add `--memory` for TF SavedModel backend, and set it to 90% of actual RAM: `--memory=$(( $(free -g \| awk '/Mem/{print $2}') * 90 / 100 ))g` |
+| **`--memory=28g` Docker flag required** | TF allocator grabs ALL available RAM without this limit | Always set `--memory=28g` (or appropriate limit) |
 | **Docker entrypoint sets OMP vars** | `docker_entrypoint.sh` sets `OMP_NUM_THREADS`, `OMP_PROC_BIND`, `OMP_PLACES` — leaks to all children in fast_pipeline | Override entrypoint with `--entrypoint /bin/bash` and unset OMP vars before fast_pipeline |
 | **fast_pipeline at 16 vCPU is SLOWER than sequential** | CPU contention between concurrent ME+CV degrades CV rate from 0.232 to 0.291 s/100 (25% slower), total 693s vs 487s | fast_pipeline only benefits with 32+ vCPU where ME and CV can use separate cores |
 | **ghcr.io Docker pull requires auth on fresh instances** | `docker pull ghcr.io/antomicblitz/...` fails without login on new instances | Run `echo "$PAT" \| docker login ghcr.io -u antomicblitz --password-stdin` first |
@@ -898,13 +898,17 @@ Host hetzner-arm64
 deepvariant-linux-arm64/
 ├── CLAUDE.md                           # This file
 ├── Dockerfile                          # Upstream x86 Dockerfile (reference)
-├── Dockerfile.arm64                    # ARM64 Linux Docker build
-├── settings.sh                         # Upstream x86 settings (reference)
-├── settings_arm64.sh                   # ARM64 settings (no -march=corei7, OneDNN+ACL, BF16)
-├── build-prereq.sh                     # Upstream x86 build prereqs (reference)
-├── build-prereq-arm64.sh              # ARM64 build prereqs (ARM64 Bazel, system Boost)
-├── build_release_binaries.sh           # Upstream x86 build (reference)
-├── build_release_binaries_arm64.sh    # ARM64 build (aarch64-opt paths)
+├── docker/
+│   ├── Dockerfile.arm64                # ARM64 Linux Docker build
+│   └── Dockerfile.arm64.runtime       # ARM64 runtime image
+├── scripts/
+│   └── build/
+│       ├── settings.sh                 # Upstream x86 settings (reference)
+│       ├── settings_arm64.sh           # ARM64 settings (no -march=corei7, OneDNN+ACL, BF16)
+│       ├── build-prereq.sh             # Upstream x86 build prereqs (reference)
+│       ├── build-prereq-arm64.sh       # ARM64 build prereqs (ARM64 Bazel, system Boost)
+│       ├── build_release_binaries.sh   # Upstream x86 build (reference)
+│       └── build_release_binaries_arm64.sh  # ARM64 build (aarch64-opt paths)
 ├── .github/
 │   └── workflows/
 │       └── arm64-build.yml            # CI: QEMU build + self-hosted accuracy test

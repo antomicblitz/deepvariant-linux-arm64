@@ -3,6 +3,97 @@
 All notable changes to the DeepVariant ARM64 fork are documented here.
 Upstream compatibility: google/deepvariant v1.9.0
 
+## [Unreleased]
+
+## [v1.9.0-arm64.7] — 2026-03-09
+
+### Fixed
+- `--ignore-installed` → `--reinstall-package` in Dockerfiles and `run-prereq.sh` for uv 0.10
+- `get-pip.py` bootstrap → `uv pip install` in `build_absl.sh` (PEP 668 on Ubuntu 24.04)
+- `uv pip install --python` targeting venv explicitly in `build_absl.sh` sudo context
+- `PYTHON_LIB_PATH` override in `settings_arm64.sh` for uv venv `site-packages`
+
+## [v1.9.0-arm64.6] — 2026-03-08
+
+### Added
+- `.bumpversion.toml`: automated fork version bumping (`bump-my-version`)
+- `.github/workflows/bump-version.yml`: workflow_dispatch version bump
+- `Dockerfile.arm64.builder`: standalone builder-stage Dockerfile for native
+  ARM64 Bazel compilation (~1hr native vs ~4hr+ QEMU)
+- `Dockerfile.arm64`: 3-stage build (builder → models → runtime) with
+  `BUILDER_IMAGE` build-arg defaulting to pre-built ghcr.io base
+- CI `build-builder` job: manual workflow_dispatch to rebuild base builder image
+- `docker_entrypoint.sh`: THP via `GLIBC_TUNABLES=glibc.malloc.hugetlb=2`
+  (glibc >= 2.35, ~6% SPEC improvement on AArch64, reduces TLB pressure)
+- `docker_entrypoint.sh`: jemalloc `MALLOC_CONF` with background_thread and
+  metadata_thp — matches run_parallel_cv.sh for consistency
+- `autoconfig.sh`: JSON output now includes `DV_USE_JEMALLOC`, `MALLOC_CONF`,
+  and `GLIBC_TUNABLES` so `DV_AUTOCONFIG=1` auto-enables jemalloc
+- `call_variants.py`: ORT `graph_optimization_level = ORT_ENABLE_ALL` for
+  extended operator fusion (Conv+BN, GEMM+Activation, constant folding)
+
+### Changed
+- Moved `TRAINING_EXPERIMENT.md` and `TRAINING_RESUME.md` from root to `docs/`
+- Updated all cross-references to moved files (README, CLAUDE.md, architecture, paper)
+- Replaced pip with uv for all Python package management in ARM64 Docker builds
+- Replaced deadsnakes PPA with `uv venv --python 3.10` in all Docker stages
+- Pinned uv to `0.10` (was `latest`)
+- Split lint job from `arm64-build.yml` into dedicated `ci.yml` workflow
+- `Dockerfile.arm64`: 36 ADD layers → single wget loop in models stage (~50→15 layers)
+- `Dockerfile.arm64`: merged 2 apt-get + 3 pip install calls into single layers
+- `Dockerfile.arm64`: ONNX conversion moved to models stage (cached independently)
+- CI `build-arm64` timeout reduced from 240min to 30min (pre-built builder base)
+
+### Removed
+- deadsnakes PPA dependency (Python 3.10 now managed by uv)
+- `python3-testresources` apt package (pip-era workaround)
+- `get-pip.py` bootstrap in `run-prereq.sh`
+- `Dockerfile.arm64.runtime`: superseded by `Dockerfile.arm64` with BUILDER_IMAGE arg
+- `Dockerfile.arm64`: removed inline builder-local fallback (use .builder file instead)
+
+### Fixed
+- `call_variants.py`: ORT version parse crash on `.post1` suffixes
+  (e.g. `1.17.0.post1` caused `int()` ValueError)
+- `call_variants.py`: `np.ascontiguousarray` wrapping ONNX batch input to
+  prevent silent per-batch copy on non-contiguous tensors
+- `docker_entrypoint.sh`: ONNX auto-selection now warns that ONT/MasSeq/Hybrid
+  models are TF-only (Dockerfile only converts WGS/WES/PacBio to ONNX)
+- `settings_arm64.sh`: removed misleading `TF_ENABLE_ONEDNN_OPTS=1` from
+  build-time settings (runtime env var, no effect during Bazel build)
+
+### Added
+- CLAUDE.md: slim entry point (`@AGENTS.md`), original content preserved in
+  `docs/architecture-arm64.md`
+- AGENTS.md: agent behavioral rules, decision framework, dead ends, quality
+  thresholds
+- CONTRIBUTING.md: dev workflow, command reference, coding standards
+- AGENT_LEARNINGS.md: seeded with dead-end patterns from benchmarking history
+- `pyproject.toml`: PEP 440 version, uv dependency-groups, ruff + pyright +
+  pytest + complexipy config
+- `Makefile`: setup_dev, lint, type_check, test, validate, docker_build,
+  benchmark (all via uv)
+- `.claude/settings.json`: marketplace plugins
+- `.devcontainer/devcontainer.json`: Python 3.10, docker-in-docker, uv + dev deps
+- `.github/workflows/codeql.yaml`: CodeQL Python code scanning on push/PR/schedule
+- `.github/dependabot.yaml`: weekly pip dependency updates
+- `.github/PULL_REQUEST_TEMPLATE.md`: structured PR template
+- CI lint-and-typecheck job with `astral-sh/setup-uv` + cache in `arm64-build.yml`
+
+### Changed
+- CI `build-arm64` timeout reduced from 240min to 30min (pre-built builder base)
+- `Dockerfile.arm64` refactored: two-stage build now references external builder
+  image instead of inline Bazel compilation
+
+### Changed
+- `setup.py` extracted to `scripts/build_proto.py` (standalone proto generation)
+- Ruff auto-fixes applied to fork scripts (f-strings, import sorting)
+- Pyright scoped to `scripts/build_proto.py` (only stdlib-only fork script);
+  upstream `deepvariant/` ignored
+
+### Removed
+- `__init__.py` (unused with Bazel build)
+- `.github/PULL_REQUEST_TEMPLATE` (replaced by `.md` version)
+
 ## [v1.9.0-arm64.4] — 2026-03-06
 
 ### Added

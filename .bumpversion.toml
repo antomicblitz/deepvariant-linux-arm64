@@ -1,0 +1,24 @@
+[tool.bumpversion]
+current_version = "1.9.0-arm64.7"
+parse = "(?P<major>\\d+)\\.(?P<minor>\\d+)\\.(?P<patch>\\d+)-arm64\\.(?P<arm64>\\d+)"
+serialize = ["{major}.{minor}.{patch}-arm64.{arm64}"]
+commit = true
+tag = true
+tag_name = "v{new_version}"
+tag_message = "Release v{new_version}"
+message = "release: v{new_version}"
+
+[tool.bumpversion.parts.arm64]
+# fork iteration counter — the only part that bumps
+
+[[tool.bumpversion.files]]
+filename = "pyproject.toml"
+parse = "(?P<major>\\d+)\\.(?P<minor>\\d+)\\.(?P<patch>\\d+)\\.post(?P<arm64>\\d+)"
+serialize = ["{major}.{minor}.{patch}.post{arm64}"]
+search = 'version = "{current_version}"'
+replace = 'version = "{new_version}"'
+
+[[tool.bumpversion.files]]
+filename = "CHANGELOG.md"
+search = "## [Unreleased]"
+replace = "## [Unreleased]\n\n## [v{new_version}] — {now:%Y-%m-%d}"

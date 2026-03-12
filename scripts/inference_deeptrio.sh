@@ -649,7 +649,7 @@ function get_docker_image() {
     if [[ "${USE_GPU}" = true ]]; then
       IMAGE="deeptrio_gpu:latest"
       run "sudo docker build \
-        -f Dockerfile.deeptrio \
+        -f docker/Dockerfile.deeptrio \
         --build-arg=FROM_IMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04 \
         --build-arg=DV_GPU_BUILD=1 -t deeptrio_gpu ."
       run echo "Done building GPU Docker image ${IMAGE}."
@@ -657,8 +657,8 @@ function get_docker_image() {
     else
       IMAGE="deeptrio:latest"
       # Building twice in case the first one times out.
-      run "sudo docker build -f Dockerfile.deeptrio -t deeptrio . || \
-        (sleep 5 ; sudo docker build -f Dockerfile.deeptrio -t deeptrio . )"
+      run "sudo docker build -f docker/Dockerfile.deeptrio -t deeptrio . || \
+        (sleep 5 ; sudo docker build -f docker/Dockerfile.deeptrio -t deeptrio . )"
       run echo "Done building Docker image ${IMAGE}."
     fi
   else
