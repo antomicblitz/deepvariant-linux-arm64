@@ -7,6 +7,11 @@
 
 source "$(dirname "$0")/settings.sh"
 
+# Reason: uv venv uses lib/pythonX.Y/site-packages, not dist-packages
+if [[ -n "${VIRTUAL_ENV:-}" ]]; then
+  export PYTHON_LIB_PATH="${VIRTUAL_ENV}/lib/python${PYTHON_VERSION}/site-packages"
+fi
+
 # Detect architecture
 ARCH=$(uname -m)
 
@@ -22,8 +27,8 @@ if [[ "${ARCH}" == "aarch64" ]]; then
   # Bazel output directory on aarch64 uses "aarch64-opt" instead of "k8-opt"
   export DV_BAZEL_OUTPUT_DIR="aarch64-opt"
 
-  # TensorFlow OneDNN+ACL optimizations for ARM64
-  export TF_ENABLE_ONEDNN_OPTS=1
+  # Reason: TF_ENABLE_ONEDNN_OPTS is a runtime env var (not a build flag).
+  # Set by docker_entrypoint.sh via CPU detection. No effect during Bazel build.
 
   # Enable BF16 fast math on Graviton3+ (Neoverse V1/V2 with BF16 support)
   if [[ -f /proc/cpuinfo ]] && grep -q bf16 /proc/cpuinfo; then

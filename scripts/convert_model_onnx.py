@@ -59,7 +59,7 @@ def convert(saved_model_dir, output_path, opset=17):
         '--opset', str(opset),
     ]
     start = time.time()
-    subprocess.run(cmd, check=True)
+    subprocess.run(cmd, check=True)  # noqa: S603
     elapsed = time.time() - start
     size_mb = os.path.getsize(output_path) / (1024 * 1024)
     print(f'Conversion complete: {size_mb:.1f} MB in {elapsed:.1f}s')
@@ -78,11 +78,10 @@ def get_input_shape(saved_model_dir):
 
 def validate(saved_model_dir, onnx_path, num_samples=100):
     """Validate ONNX model produces identical logits to TF SavedModel."""
-    import numpy as np
-
     # Lazy imports — only needed for validation
-    import tensorflow as tf
+    import numpy as np
     import onnxruntime as ort
+    import tensorflow as tf
 
     input_shape = get_input_shape(saved_model_dir)
     print(f'Validating with input shape {input_shape}, {num_samples} samples')

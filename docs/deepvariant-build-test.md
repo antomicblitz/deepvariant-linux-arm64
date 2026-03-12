@@ -8,7 +8,7 @@ cloud computing platform like Google Cloud Engine.
 First install the [Google Cloud SDK](https://cloud.google.com/sdk/downloads),
 because we will need to use its `gsutil` command to fetch some dependencies.
 
-The `build-prereq.sh` command below will install a number of system packages to
+The `scripts/build/build-prereq.sh` command below will install a number of system packages to
 fulfill DeepVariant's prerequisites (using apt-get and pip, invoked via sudo).
 This commands also downloads and builds TensorFlow and CLIF from source.
 
@@ -16,9 +16,9 @@ First run `sudo su`, and then run the following commands to install
 prerequisites, build the DeepVariant programs, and then run tests.
 
 ```shell
-./build-prereq.sh
+./scripts/build/build-prereq.sh
 
-./build_and_test.sh
+./scripts/build/build_and_test.sh
 ```
 
 At the end of the output of that last command, you should see a summary message
@@ -37,10 +37,10 @@ DeepVariant, since there are runtime dependencies, such as Python packages like
 numpy and Tensorflow to be installed:
 
 ```shell
-./run-prereq.sh
+./scripts/build/run-prereq.sh
 ```
 
 ## Configuring the build
 
-Advanced users may want to edit the settings.sh file before building. It
+Advanced users may want to edit the scripts/build/settings.sh file before building. It
 contains options for configuring TensorFlow, CUDA, GPU usage, etc.

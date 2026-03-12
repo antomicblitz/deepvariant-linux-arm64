@@ -1,5 +1,6 @@
-# Compiled python files.
+# Compiled python files
 *.pyc
+__pycache__/
 
 # Emacs temporary files
 *~
@@ -7,6 +8,20 @@
 # Other temporary files
 *#
 
+# Build artifacts
 bazel-*
 
+# Python tooling
+.venv/
+.ruff_cache/
+.pyright/
+.pytest_cache/
+
+# Jupyter
 **/.ipynb_checkpoints
+
+# Claude Code (plugin-managed, user-specific)
+.claude/rules/
+.claude/skills/
+.claude/scripts/
+.claude/settings.local.json

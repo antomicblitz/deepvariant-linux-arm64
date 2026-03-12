@@ -85,7 +85,7 @@ rm -rf /tmp/deeptrio.wgs_child.savedmodel
 gsutil -m cp -R ${MODEL} /tmp/
 MODEL=/tmp/deeptrio.wgs_child.savedmodel
 
-source settings.sh
+source scripts/build/settings.sh
 
 # Need to run this first, otherwise the bazel build command below will complain
 # about deepvariant/examples_from_stream.so.

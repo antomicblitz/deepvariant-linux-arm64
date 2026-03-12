@@ -1,7 +1,9 @@
 # CI workflow for building and testing DeepVariant on ARM64.
 #
-# Uses QEMU emulation for the build step (slow but free on GitHub Actions).
-# Accuracy testing requires a self-hosted ARM64 runner (Graviton, Ampere).
+# Uses native ARM64 runners (no QEMU emulation needed).
+# Runtime build uses a pre-built builder image from ghcr.io (~10min).
+# Full from-source builder rebuild available via workflow_dispatch (~1-2hr native).
+# Pushes images to ghcr.io on both PRs (tagged pr-N) and main (tagged latest).
 
 name: ARM64 Build & Test
 
@@ -14,11 +16,16 @@ on:
       - 'LICENSE'
   pull_request:
     branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - 'LICENSE'
   workflow_dispatch:
+    inputs:
+      rebuild_builder:
+        description: 'Rebuild base builder image from source (~1-2hr native ARM64)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
 
 env:
   DOCKER_IMAGE: deepvariant-arm64
@@ -26,46 +33,119 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  build-arm64:
-    name: Build ARM64 Docker Image
-    runs-on: ubuntu-latest
-    timeout-minutes: 240
+  # Rebuild the base builder image from source (Bazel compilation).
+  # Only runs on manual dispatch with rebuild_builder=true.
+  # Reason: native ARM64 runner — no QEMU, ~1-2hr vs ~4hr+ emulated
+  build-builder:
+    name: Rebuild Base Builder Image
+    if: github.event_name == 'workflow_dispatch' && inputs.rebuild_builder == 'true'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up QEMU for ARM64 emulation
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
+      - name: Read project version
+        id: version
+        run: |
+          version=$(grep '^current_version' .bumpversion.toml | sed 's/.*= *"//;s/"//')
+          # Reason: upstream_version strips -arm64.N suffix for builder tag
+          upstream_version=$(echo "$version" | sed 's/-.*//')
+          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+          echo "builder_tag=base-builder-v${upstream_version}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GitHub Container Registry
-        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build ARM64 Docker image
+      - name: Build and push base builder image
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: Dockerfile.arm64
-          platforms: linux/arm64
-          push: ${{ github.event_name != 'pull_request' }}
+          file: docker/Dockerfile.arm64.builder
+          push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.builder_tag }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:builder-${{ steps.version.outputs.tag }}
+          cache-from: type=gha,scope=builder
+          cache-to: type=gha,mode=max,scope=builder
+
+  # Build the runtime image using the pre-built builder base (~10min native).
+  # Reason: native ARM64 runner — no QEMU needed for apt-get, uv, tf2onnx
+  # Waits for builder rebuild if triggered via dispatch with rebuild_builder=true
+  build-arm64:
+    name: Build ARM64 Docker Image
+    needs: [build-builder]
+    if: always() && (needs.build-builder.result == 'success' || needs.build-builder.result == 'skipped')
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read project version
+        id: version
+        run: |
+          version=$(grep '^current_version' .bumpversion.toml | sed 's/.*= *"//;s/"//')
+          upstream_version=$(echo "$version" | sed 's/-.*//')
+          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+          echo "builder_tag=base-builder-v${upstream_version}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check base builder image exists
+        run: |
+          if ! docker manifest inspect "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.builder_tag }}" > /dev/null 2>&1; then
+            echo "::error::Base builder image ${{ steps.version.outputs.builder_tag }} not found. Run workflow_dispatch with rebuild_builder=true first."
+            exit 1
+          fi
+
+      - name: Docker meta (tags for main and PR branches)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ steps.version.outputs.tag }}
+            type=sha,prefix=
+            type=ref,event=pr
+
+      - name: Build and push ARM64 Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BUILDER_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.builder_tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
   test-accuracy:
     name: Accuracy Validation (chr20)
     needs: build-arm64
-    runs-on: [self-hosted, arm64, linux]
+    runs-on: ubuntu-24.04-arm
     if: github.event_name != 'pull_request'
     timeout-minutes: 120
     steps:

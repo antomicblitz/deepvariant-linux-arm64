@@ -32,7 +32,7 @@
 # NOLINT
 set -eux -o pipefail
 
-source settings.sh
+source "$(dirname "$0")/settings.sh"
 
 # bazel should have been installed in build-prereq.sh, but the PATH might
 # need to be added in this script.
@@ -80,7 +80,7 @@ else
 fi
 
 # Build the binary.
-./build_release_binaries.sh
+./scripts/build/build_release_binaries.sh
 
 echo 'Expect a usage message:'
 (python3 bazel-out/k8-opt/bin/deepvariant/call_variants.zip --help || : ) | grep '/call_variants.py:'

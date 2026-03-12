@@ -70,9 +70,12 @@ if [[ -z "${DV_USE_ONNX+x}" ]]; then
       export DV_USE_ONNX=0
       echo "deepvariant: WARNING: BF16 with ${_ram_gb} GB RAM may OOM. Use --memory=48g+ or mount INT8 model." >&2
     fi
-  elif [[ -f /opt/models/wgs/model_int8_static.onnx ]]; then
+  elif [[ -f /opt/models/wgs/model_int8_static.onnx || -f /opt/models/wgs/model.onnx ]]; then
+    # Only auto-enable ONNX for model types that have ONNX models.
+    # Dockerfile.arm64 converts WGS/WES/PacBio; ONT/MasSeq/Hybrid are TF-only.
     export DV_USE_ONNX=1
     echo "deepvariant: INT8 ONNX auto-selected (non-BF16 platform, 2.3x over FP32)" >&2
+    echo "deepvariant: NOTE: ONNX models available for WGS/WES/PacBio only. ONT/MasSeq/Hybrid use TF." >&2
   else
     export DV_USE_ONNX=0
   fi
@@ -96,10 +99,21 @@ if [[ "${DV_USE_JEMALLOC:-0}" == "1" ]]; then
   _JEMALLOC="${DV_JEMALLOC_PATH:-/usr/lib/aarch64-linux-gnu/libjemalloc.so.2}"
   if [[ -f "${_JEMALLOC}" ]]; then
     export LD_PRELOAD="${_JEMALLOC}${LD_PRELOAD:+:$LD_PRELOAD}"
-    echo "deepvariant: jemalloc enabled (${_JEMALLOC})" >&2
+    # Enable background thread for deferred purging and THP for metadata pages.
+    # Matches run_parallel_cv.sh configuration for consistency.
+    export MALLOC_CONF="${MALLOC_CONF:-background_thread:true,metadata_thp:auto}"
+    echo "deepvariant: jemalloc enabled (${_JEMALLOC}, MALLOC_CONF=${MALLOC_CONF})" >&2
   else
     echo "deepvariant: WARNING: DV_USE_JEMALLOC=1 but ${_JEMALLOC} not found" >&2
   fi
+fi
+
+# --- Transparent Huge Pages ---
+# glibc >= 2.35 supports THP for malloc via GLIBC_TUNABLES.
+# Reduces TLB pressure on AArch64 — benchmarked ~6% improvement on SPEC.
+# Complements jemalloc (jemalloc reduces cache misses, THP reduces TLB misses).
+if [[ -z "${GLIBC_TUNABLES+x}" ]]; then
+  export GLIBC_TUNABLES="glibc.malloc.hugetlb=2"
 fi
 
 # --- Optional full autoconfig banner ---

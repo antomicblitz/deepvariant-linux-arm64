@@ -225,7 +225,10 @@ if [[ "${JSON_OUTPUT}" == "true" ]]; then
     "ONEDNN_DEFAULT_FPMATH_MODE": ${_fpmath_json},
     "OMP_NUM_THREADS": "${VCPUS}",
     "OMP_PROC_BIND": "false",
-    "OMP_PLACES": "cores"
+    "OMP_PLACES": "cores",
+    "DV_USE_JEMALLOC": "$(if [[ "${JEMALLOC_RECOMMENDED}" == "true" && "${JEMALLOC_AVAILABLE}" == "true" ]]; then echo 1; else echo 0; fi)",
+    "MALLOC_CONF": "$(if [[ "${JEMALLOC_RECOMMENDED}" == "true" && "${JEMALLOC_AVAILABLE}" == "true" ]]; then echo "background_thread:true,metadata_thp:auto"; fi)",
+    "GLIBC_TUNABLES": "glibc.malloc.hugetlb=2"
   },
   "onnx_model": ${_onnx_model_json},
   "recommended_cv_threads": ${RECOMMENDED_CV_THREADS},

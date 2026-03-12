@@ -10,7 +10,7 @@ set -euo pipefail
 echo ========== This script is maintained for Ubuntu 22.04 on ARM64.
 echo ========== Load config settings.
 
-source settings_arm64.sh
+source "$(dirname "$0")/settings_arm64.sh"
 
 ARCH=$(uname -m)
 if [[ "${ARCH}" != "aarch64" ]]; then
@@ -24,19 +24,19 @@ fi
 
 note_build_stage "Install the runtime packages"
 
-./run-prereq.sh
+"$(dirname "$0")/run-prereq.sh"
 
 note_build_stage "Update package list"
 
-sudo -H apt-get -qq -y update
+$SUDO_H apt-get -qq -y update
 
 note_build_stage "build-prereq-arm64.sh: Install development packages"
 
 wait_for_dpkg_lock
-sudo -H NEEDRESTART_MODE=a apt-get -qq -y install pkg-config zip g++ zlib1g-dev unzip curl git wget > /dev/null
+$SUDO_H NEEDRESTART_MODE=a apt-get -qq -y install pkg-config zip g++ zlib1g-dev unzip curl git wget > /dev/null
 
 # ARM64-specific: install Boost from system packages (not Homebrew)
-sudo -H apt-get -qq -y install libboost-dev libboost-graph-dev libboost-system-dev libboost-filesystem-dev libboost-math-dev > /dev/null
+$SUDO_H apt-get -qq -y install libboost-dev libboost-graph-dev libboost-system-dev libboost-filesystem-dev libboost-math-dev > /dev/null
 
 ################################################################################
 # bazel
@@ -68,7 +68,7 @@ function ensure_wanted_bazel_version {
 ensure_wanted_bazel_version "${DV_BAZEL_VERSION}"
 
 # Build abseil for examples_from_stream.so
-time sudo ./tools/build_absl.sh
+time $SUDO ./tools/build_absl.sh
 
 ################################################################################
 # TensorFlow
@@ -104,6 +104,6 @@ sed -i -e 's|pybind11-2.10.0|pybind11-a7b91e33269ab6f3f90167291af2c4179fc878f5|g
 
 note_build_stage "Set pyparsing to 2.2.2 for CLIF."
 export PATH="$HOME/.local/bin":$PATH
-pip3 uninstall -y pyparsing && pip3 install -Iv 'pyparsing==2.2.2'
+uv pip uninstall pyparsing && uv pip install 'pyparsing==2.2.2'
 
 note_build_stage "build-prereq-arm64.sh complete"
